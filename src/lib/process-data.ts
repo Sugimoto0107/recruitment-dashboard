@@ -253,11 +253,13 @@ export function computeAgeGroupDistribution(seekers: RawJobSeeker[]): ProfileDis
     }
   }
 
-  return Object.entries(groups)
-    .map(([label, count]) => ({
+  // 若い順に固定（Object.entriesの順序に依存しない）
+  const ageOrder = ["20代", "30代", "40代", "50代以上"];
+  return ageOrder
+    .map((label) => ({
       label,
-      count,
-      percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+      count: groups[label],
+      percentage: total > 0 ? Math.round((groups[label] / total) * 1000) / 10 : 0,
     }))
     .filter((d) => d.count > 0);
 }
@@ -290,11 +292,13 @@ export function computeSalaryDistribution(seekers: RawJobSeeker[]): ProfileDistr
     }
   }
 
-  return Object.entries(ranges)
-    .map(([label, count]) => ({
+  // 少ない順に固定（Object.entriesの順序に依存しない）
+  const salaryOrder = ["〜300万", "300〜500万", "500〜700万", "700〜1000万", "1000万〜"];
+  return salaryOrder
+    .map((label) => ({
       label,
-      count,
-      percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+      count: ranges[label],
+      percentage: total > 0 ? Math.round((ranges[label] / total) * 1000) / 10 : 0,
     }))
     .filter((d) => d.count > 0);
 }
