@@ -78,7 +78,8 @@ function DonutChart({
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">{title}</h3>
-      <ResponsiveContainer width="100%" height={260}>
+      {/* ドーナツグラフ */}
+      <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie
             data={data}
@@ -86,12 +87,12 @@ function DonutChart({
             nameKey="label"
             cx="50%"
             cy="50%"
-            innerRadius={50}
-            outerRadius={90}
+            innerRadius={45}
+            outerRadius={80}
             paddingAngle={2}
-            label={({ name, payload }: any) =>
-              `${name} ${payload?.percentage ?? ""}%`
-            }
+            startAngle={90}
+            endAngle={-270}
+            label={false}
           >
             {data.map((_, i) => (
               <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -102,6 +103,23 @@ function DonutChart({
           />
         </PieChart>
       </ResponsiveContainer>
+      {/* 凡例をグラフ下に表示（切れない） */}
+      <div className="mt-2 space-y-1">
+        {data.map((d, i) => (
+          <div key={i} className="flex items-center justify-between text-xs text-gray-700">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span
+                className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                style={{ backgroundColor: COLORS[i % COLORS.length] }}
+              />
+              <span className="truncate">{d.label}</span>
+            </div>
+            <span className="ml-2 flex-shrink-0 tabular-nums font-medium">
+              {d.count}人（{d.percentage}%）
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
