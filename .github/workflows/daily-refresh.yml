@@ -21,12 +21,13 @@ jobs:
             echo "DASHBOARD_URL or REVALIDATE_TOKEN is not configured" >&2
             exit 1
           fi
-          AUTH_HEADER=()
-          if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
-            AUTH_HEADER=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          if [ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+            echo "VERCEL_AUTOMATION_BYPASS_SECRET is not configured" >&2
+            exit 1
           fi
+          echo "Hitting revalidate endpoint..."
           status=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
-            "${AUTH_HEADER[@]}" \
+            -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
             "${DASHBOARD_URL%/}/api/revalidate?token=${REVALIDATE_TOKEN}")
           echo "HTTP status: $status"
           cat /tmp/resp.json
