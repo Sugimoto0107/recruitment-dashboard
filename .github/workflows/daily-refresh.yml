@@ -1,0 +1,31 @@
+name: Daily dashboard refresh
+
+# 毎朝 9:00 JST (= 00:00 UTC) に Vercel 上のダッシュボードを再生成する
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  revalidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit revalidate endpoint
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          REVALIDATE_TOKEN: ${{ secrets.REVALIDATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DASHBOARD_URL:-}" ] || [ -z "${REVALIDATE_TOKEN:-}" ]; then
+            echo "DASHBOARD_URL or REVALIDATE_TOKEN is not configured" >&2
+            exit 1
+          fi
+          status=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            "${DASHBOARD_URL%/}/api/revalidate?token=${REVALIDATE_TOKEN}")
+          echo "HTTP status: $status"
+          cat /tmp/resp.json
+          echo
+          if [ "$status" != "200" ]; then
+            echo "Revalidate request failed" >&2
+            exit 1
+          fi
