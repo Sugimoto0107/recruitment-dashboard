@@ -21,13 +21,15 @@ function emptyData(): DashboardData {
   return {
     isConnected: false,
     generatedAt: new Date().toISOString(),
-    companySummary: { total: 0, byStatus: {} },
+    companySummary: { total: 0, byStatus: {}, records: [] },
     jobSummary: { total: 0, byStatus: {}, publishedByJobCode: {} },
     contractedCompanies: 0,
     activeJobs: 0,
     monthlyMetrics: [],
     staffList: [],
     staffMetrics: {},
+    sourceList: [],
+    sourceMetrics: {},
     grandTotals: {
       month: "累計",
       エントリー数: 0,
@@ -44,6 +46,7 @@ function emptyData(): DashboardData {
     },
     averageDays: { entryToInterview: null, entryToAcceptance: null },
     staffAverageDays: {},
+    sourceAverageDays: {},
     prefectureData: [],
     ageGroupData: [],
     salaryRangeData: [],
@@ -60,6 +63,13 @@ function emptyData(): DashboardData {
       documentNg: 0,
       interviewNg: 0,
       declines: 0,
+    },
+    inProgress: {
+      書類選考: [],
+      一次面接: [],
+      二次面接: [],
+      最終面接: [],
+      内定: [],
     },
     jobSeekerSummaries: [],
   };

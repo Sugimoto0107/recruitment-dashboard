@@ -6,6 +6,7 @@
 import {
   RawJobSeeker,
   RawApplication,
+  CompanyRecord,
   CompanySummary,
   JobSummary,
   APPLICATION_PHASES,
@@ -56,6 +57,25 @@ export interface ApplicationFunnel {
   declines: number;
 }
 
+// --- 選考中・内定承諾待ちのリストアイテム ---
+export interface InProgressItem {
+  applicationId: string;
+  phase: string;
+  candidateName: string;
+  companyName: string;
+  scheduledDate: string | null; // 各フェーズの実施予定日
+}
+
+export interface InProgressBuckets {
+  // 選考中
+  書類選考: InProgressItem[];
+  一次面接: InProgressItem[];
+  二次面接: InProgressItem[];
+  最終面接: InProgressItem[];
+  // 内定承諾待ち
+  内定: InProgressItem[];
+}
+
 // --- 求職者サマリー (個別表示) ---
 export interface JobSeekerSummary {
   id: string;
@@ -63,6 +83,7 @@ export interface JobSeekerSummary {
   candidateNo: string;
   staff: string;
   entryDate: string | null;
+  interviewDate: string | null;
   finalResult: string;
   recommendations: number;
   interviewSettings: number;
@@ -92,15 +113,20 @@ export interface DashboardData {
   monthlyMetrics: MonthlyCAMetrics[];
   staffList: string[];
   staffMetrics: Record<string, MonthlyCAMetrics[]>;
+  sourceList: string[];
+  sourceMetrics: Record<string, MonthlyCAMetrics[]>;
   grandTotals: MonthlyCAMetrics;
   averageDays: AverageDays;
   staffAverageDays: Record<string, AverageDays>;
+  sourceAverageDays: Record<string, AverageDays>;
   // プロフィール分析
   prefectureData: ProfileDistribution[];
   ageGroupData: ProfileDistribution[];
   salaryRangeData: ProfileDistribution[];
   // 応募ファネル
   applicationFunnel: ApplicationFunnel;
+  // 現フェーズ別の選考中・承諾待ち
+  inProgress: InProgressBuckets;
   // 求職者個別
   jobSeekerSummaries: JobSeekerSummary[];
 }
@@ -274,6 +300,46 @@ export function computeStaffAverageDays(
 }
 
 // =============================================================
+// 流入経路別 CA 指標 (担当者別と同じロジックで source で切り出す)
+// =============================================================
+export function computeSourceMetrics(seekers: RawJobSeeker[]): {
+  sourceList: string[];
+  sourceMetrics: Record<string, MonthlyCAMetrics[]>;
+} {
+  const groups = new Map<string, RawJobSeeker[]>();
+  for (const s of seekers) {
+    const src = s.source || "未設定";
+    if (!groups.has(src)) {
+      groups.set(src, []);
+    }
+    groups.get(src)!.push(s);
+  }
+
+  const sourceList = Array.from(groups.keys()).sort();
+  const sourceMetrics: Record<string, MonthlyCAMetrics[]> = {};
+  for (const [src, group] of groups) {
+    sourceMetrics[src] = computeMonthlyMetrics(group);
+  }
+  return { sourceList, sourceMetrics };
+}
+
+export function computeSourceAverageDays(
+  seekers: RawJobSeeker[]
+): Record<string, AverageDays> {
+  const groups = new Map<string, RawJobSeeker[]>();
+  for (const s of seekers) {
+    const src = s.source || "未設定";
+    if (!groups.has(src)) groups.set(src, []);
+    groups.get(src)!.push(s);
+  }
+  const result: Record<string, AverageDays> = {};
+  for (const [src, group] of groups) {
+    result[src] = computeAverageDays(group);
+  }
+  return result;
+}
+
+// =============================================================
 // プロフィール分布
 // =============================================================
 export function computePrefectureDistribution(
@@ -434,19 +500,98 @@ export function computeApplicationFunnel(
 }
 
 // =============================================================
+// 選考中 / 内定承諾待ちの個別リスト
+// =============================================================
+export function computeInProgress(
+  apps: RawApplication[],
+  seekers: RawJobSeeker[],
+  companies: CompanyRecord[]
+): InProgressBuckets {
+  const seekerById = new Map(seekers.map((s) => [s.id, s]));
+  const companyById = new Map(companies.map((c) => [c.id, c]));
+
+  const buckets: InProgressBuckets = {
+    書類選考: [],
+    一次面接: [],
+    二次面接: [],
+    最終面接: [],
+    内定: [],
+  };
+
+  function buildItem(a: RawApplication, scheduledDate: string | null): InProgressItem {
+    const candidate = a.seekerIds
+      .map((id) => seekerById.get(id))
+      .find((s) => !!s);
+    const company = a.companyIds
+      .map((id) => companyById.get(id))
+      .find((c) => !!c);
+    return {
+      applicationId: a.id,
+      phase: a.phase ?? "",
+      candidateName: candidate?.name || "(未設定)",
+      companyName: company?.name || "(未設定)",
+      scheduledDate,
+    };
+  }
+
+  for (const a of apps) {
+    if (!a.phase) continue;
+    switch (a.phase) {
+      case "書類選考":
+        buckets.書類選考.push(buildItem(a, a.recommendDate));
+        break;
+      case "一次面接":
+        buckets.一次面接.push(
+          buildItem(a, a.firstInterviewSetDate ?? a.firstInterviewDate)
+        );
+        break;
+      case "二次面接":
+        buckets.二次面接.push(buildItem(a, a.secondInterviewDate));
+        break;
+      case "最終面接":
+        buckets.最終面接.push(buildItem(a, a.finalInterviewDate));
+        break;
+      case "内定":
+        buckets.内定.push(buildItem(a, a.offerDate));
+        break;
+      default:
+        break;
+    }
+  }
+
+  // 各バケットを 実施予定日 昇順 (近い順) でソート
+  const sortByDate = (a: InProgressItem, b: InProgressItem) => {
+    const aDate = a.scheduledDate ?? "9999-12-31";
+    const bDate = b.scheduledDate ?? "9999-12-31";
+    return aDate.localeCompare(bDate);
+  };
+  buckets.書類選考.sort(sortByDate);
+  buckets.一次面接.sort(sortByDate);
+  buckets.二次面接.sort(sortByDate);
+  buckets.最終面接.sort(sortByDate);
+  buckets.内定.sort(sortByDate);
+
+  return buckets;
+}
+
+// =============================================================
 // 求職者サマリー (個別)
+// 面談実施済かつ無効でない人だけを返す
+// 検索/全表示の切り分けはフロント側で行う
+// 並び順: 面談実施日 降順
 // =============================================================
 export function buildJobSeekerSummaries(
   seekers: RawJobSeeker[]
 ): JobSeekerSummary[] {
   return seekers
-    .filter((s) => !s.isInvalid)
+    .filter((s) => !s.isInvalid && s.interviewDone)
     .map((s) => ({
       id: s.id,
       name: s.name || "(未設定)",
       candidateNo: s.candidateNo,
       staff: s.staff,
       entryDate: s.entryDate,
+      interviewDate: s.interviewDate,
       finalResult: s.finalResult,
       recommendations: s.recommendations,
       interviewSettings: s.interviewSettings,
@@ -462,9 +607,9 @@ export function buildJobSeekerSummaries(
       hireDate: s.hireDate,
     }))
     .sort((a, b) => {
-      const aDate = a.entryDate ?? "";
-      const bDate = b.entryDate ?? "";
-      return bDate.localeCompare(aDate);
+      const aDate = a.interviewDate ?? "";
+      const bDate = b.interviewDate ?? "";
+      return bDate.localeCompare(aDate); // 面談日の降順
     });
 }
 
@@ -480,13 +625,20 @@ export function processAllData(
 ): DashboardData {
   const monthlyMetrics = computeMonthlyMetrics(seekers);
   const { staffList, staffMetrics } = computeStaffMetrics(seekers);
+  const { sourceList, sourceMetrics } = computeSourceMetrics(seekers);
   const grandTotals = computeGrandTotals(monthlyMetrics);
   const averageDays = computeAverageDays(seekers);
   const staffAverageDays = computeStaffAverageDays(seekers);
+  const sourceAverageDays = computeSourceAverageDays(seekers);
   const prefectureData = computePrefectureDistribution(seekers);
   const ageGroupData = computeAgeGroupDistribution(seekers);
   const salaryRangeData = computeSalaryDistribution(seekers);
   const applicationFunnel = computeApplicationFunnel(applications);
+  const inProgress = computeInProgress(
+    applications,
+    seekers,
+    companySummary.records
+  );
   const jobSeekerSummaries = buildJobSeekerSummaries(seekers);
 
   return {
@@ -499,13 +651,17 @@ export function processAllData(
     monthlyMetrics,
     staffList,
     staffMetrics,
+    sourceList,
+    sourceMetrics,
     grandTotals,
     averageDays,
     staffAverageDays,
+    sourceAverageDays,
     prefectureData,
     ageGroupData,
     salaryRangeData,
     applicationFunnel,
+    inProgress,
     jobSeekerSummaries,
   };
 }

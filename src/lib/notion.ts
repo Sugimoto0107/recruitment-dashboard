@@ -83,32 +83,44 @@ async function queryAllPages(
 }
 
 // =====================================================
-// 契約企業: 総数 + ステータス別
+// 契約企業: 総数 + ステータス別 + 個別レコード一覧
 // =====================================================
+export interface CompanyRecord {
+  id: string;
+  name: string;
+  status: string | null;
+}
+
 export interface CompanySummary {
   total: number;
   byStatus: Record<string, number>;
+  records: CompanyRecord[]; // ID -> 企業名 解決用
 }
 
 export async function getContractCompanySummary(): Promise<CompanySummary> {
   const notion = getNotionClient();
-  if (!notion) return { total: 0, byStatus: {} };
+  if (!notion) return { total: 0, byStatus: {}, records: [] };
 
   try {
     const results = await queryAllPages(notion, COMPANY_DS_ID);
     const byStatus: Record<string, number> = {};
     for (const status of COMPANY_STATUSES) byStatus[status] = 0;
+    const records: CompanyRecord[] = [];
+
     for (const page of results) {
       const status = page.properties?.["ステータス"]?.select?.name as
         | string
         | undefined;
       const key = status ?? "未設定";
       byStatus[key] = (byStatus[key] ?? 0) + 1;
+      const name =
+        page.properties?.["企業名"]?.title?.[0]?.text?.content ?? "";
+      records.push({ id: page.id, name, status: status ?? null });
     }
-    return { total: results.length, byStatus };
+    return { total: results.length, byStatus, records };
   } catch (error) {
     console.error("Notion API error (companies):", error);
-    return { total: 0, byStatus: {} };
+    return { total: 0, byStatus: {}, records: [] };
   }
 }
 
@@ -183,6 +195,9 @@ export interface RawApplication {
   offerDate: string | null;
   acceptanceDate: string | null;
   expectedJoinDate: string | null;
+  // リレーション (ID 配列)
+  seekerIds: string[];
+  companyIds: string[];
 }
 
 export async function getAllApplications(): Promise<RawApplication[]> {
@@ -194,6 +209,11 @@ export async function getAllApplications(): Promise<RawApplication[]> {
     return results.map((page: any) => {
       const props = page.properties;
       const dateOf = (key: string) => props[key]?.date?.start ?? null;
+      const relIds = (key: string): string[] => {
+        const rel = props[key]?.relation;
+        if (!Array.isArray(rel)) return [];
+        return rel.map((r: any) => r?.id).filter(Boolean);
+      };
       return {
         id: page.id,
         phase: props["フェーズ"]?.select?.name ?? null,
@@ -208,6 +228,8 @@ export async function getAllApplications(): Promise<RawApplication[]> {
         offerDate: dateOf("内定日"),
         acceptanceDate: dateOf("内定承諾日"),
         expectedJoinDate: dateOf("入社想定日"),
+        seekerIds: relIds("求職者"),
+        companyIds: relIds("応募企業"),
       };
     });
   } catch (error) {

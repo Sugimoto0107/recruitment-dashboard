@@ -8,7 +8,8 @@ import type {
   MonthlyCAMetrics,
   ProfileDistribution,
   AverageDays,
-  ApplicationFunnel,
+  InProgressBuckets,
+  InProgressItem,
   JobSeekerSummary,
 } from "@/lib/process-data";
 import {
@@ -165,12 +166,78 @@ function DonutChart({
   );
 }
 
-// --- 応募ファネルテーブル ---
-function ApplicationFunnelSection({ funnel }: { funnel: ApplicationFunnel }) {
-  // 主要ステップ ベース = 推薦されたものを 100% とする
+// --- 選考中・承諾待ちのフェーズカード ---
+function InProgressPhaseCard({
+  title,
+  items,
+  showDate = true,
+  accentClass = "bg-blue-500",
+}: {
+  title: string;
+  items: InProgressItem[];
+  showDate?: boolean;
+  accentClass?: string;
+}) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span
+            className={`w-1 h-4 ${accentClass} rounded-full inline-block`}
+          />
+          <h4 className="text-sm font-semibold text-gray-800">{title}</h4>
+        </div>
+        <span className="text-xs text-gray-500 tabular-nums">
+          {fmt(items.length)} 件
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-gray-400 py-2">該当なし</p>
+      ) : (
+        <ul className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+          {items.map((it) => (
+            <li
+              key={it.applicationId}
+              className="text-sm border-l-2 border-gray-200 pl-2 py-0.5"
+            >
+              <div className="font-medium text-gray-800 truncate">
+                {it.candidateName}
+              </div>
+              <div className="text-xs text-gray-600 truncate">
+                {it.companyName}
+              </div>
+              {showDate && (
+                <div className="text-xs text-gray-400 tabular-nums">
+                  {it.scheduledDate ? `実施予定日: ${it.scheduledDate}` : "実施予定日: 未設定"}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// --- 応募ファネルセクション ---
+function ApplicationFunnelSection({
+  funnel,
+  inProgress,
+}: {
+  funnel: {
+    recommended: number;
+    firstInterview: number;
+    secondInterview: number;
+    finalInterview: number;
+    offers: number;
+    acceptances: number;
+    joins: number;
+  };
+  inProgress: InProgressBuckets;
+}) {
   const base = Math.max(funnel.recommended, 1);
 
-  const rows: { label: string; count: number; rateLabel?: string }[] = [
+  const rows: { label: string; count: number }[] = [
     { label: "推薦", count: funnel.recommended },
     { label: "一次面接 実施", count: funnel.firstInterview },
     { label: "二次面接 実施", count: funnel.secondInterview },
@@ -181,7 +248,7 @@ function ApplicationFunnelSection({ funnel }: { funnel: ApplicationFunnel }) {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* メインファネル */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
         <table className="w-full text-sm">
@@ -220,33 +287,49 @@ function ApplicationFunnelSection({ funnel }: { funnel: ApplicationFunnel }) {
         </table>
       </div>
 
-      {/* 不採用・辞退 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <KPICard title="書類NG" value={funnel.documentNg} />
-        <KPICard title="面接NG" value={funnel.interviewNg} />
-        <KPICard title="求職者辞退" value={funnel.declines} />
+      {/* 選考中の方 */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+          <span className="w-1 h-4 bg-yellow-500 rounded-full inline-block" />
+          選考中の方
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <InProgressPhaseCard
+            title="書類選考"
+            items={inProgress.書類選考}
+            accentClass="bg-blue-400"
+          />
+          <InProgressPhaseCard
+            title="一次面接"
+            items={inProgress.一次面接}
+            accentClass="bg-yellow-400"
+          />
+          <InProgressPhaseCard
+            title="二次面接"
+            items={inProgress.二次面接}
+            accentClass="bg-orange-400"
+          />
+          <InProgressPhaseCard
+            title="最終面接"
+            items={inProgress.最終面接}
+            accentClass="bg-pink-400"
+          />
+        </div>
       </div>
 
-      {/* 現フェーズ別の在籍数 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">
-          現フェーズ別の応募件数
+      {/* 内定承諾待ちの方 */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+          <span className="w-1 h-4 bg-green-500 rounded-full inline-block" />
+          内定承諾待ちの方
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-          {Object.entries(funnel.byPhase)
-            .filter(([, n]) => n > 0)
-            .sort((a, b) => b[1] - a[1])
-            .map(([phase, count]) => (
-              <div
-                key={phase}
-                className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
-              >
-                <span className="text-gray-700 truncate">{phase}</span>
-                <span className="tabular-nums font-semibold text-gray-900 ml-2">
-                  {fmt(count)}
-                </span>
-              </div>
-            ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <InProgressPhaseCard
+            title="内定"
+            items={inProgress.内定}
+            showDate={false}
+            accentClass="bg-green-500"
+          />
         </div>
       </div>
     </div>
@@ -258,7 +341,11 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
   const [filter, setFilter] = useState("");
   const filtered = useMemo(() => {
     const q = filter.trim();
-    if (!q) return rows;
+    if (!q) {
+      // デフォルト: 最終結果が空のものだけ
+      return rows.filter((r) => !r.finalResult);
+    }
+    // 検索時: 面談実施済の全員から名前/担当者/最終結果/候補者NOで部分一致
     return rows.filter(
       (r) =>
         r.name.includes(q) ||
@@ -270,14 +357,19 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <input
-          type="text"
-          placeholder="氏名・候補者NO・担当者で絞り込み"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 w-72 max-w-full"
-        />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <input
+            type="text"
+            placeholder="氏名・候補者NO・担当者で絞り込み"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 w-72 max-w-full"
+          />
+          <span className="text-xs text-gray-500">
+            {filter ? "面談実施済 全員から検索" : "面談実施済 × 最終結果未設定"}
+          </span>
+        </div>
         <span className="text-xs text-gray-500">
           {fmt(filtered.length)} / {fmt(rows.length)} 件
         </span>
@@ -289,6 +381,7 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
               <th className="px-3 py-2 font-medium whitespace-nowrap">氏名</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">候補者NO</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">担当者</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">面談日</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">エントリー日</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">最終結果</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap text-right">推薦</th>
@@ -309,7 +402,7 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={17}
+                  colSpan={18}
                   className="px-4 py-8 text-center text-gray-400"
                 >
                   対象データがありません
@@ -330,45 +423,28 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
                   <td className="px-3 py-2 whitespace-nowrap text-gray-600">
                     {r.staff || "-"}
                   </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
+                    {r.interviewDate ?? "-"}
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-600">
                     {r.entryDate ?? "-"}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-600">
                     {r.finalResult || "-"}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.recommendations)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.interviewSettings)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.interviewsConducted)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.firstInterviewPass)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.secondInterviewExecuted)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.secondInterviewPass)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.finalInterviewExecuted)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.offers)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.acceptances)}
-                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.recommendations)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewSettings)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewsConducted)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.firstInterviewPass)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.secondInterviewExecuted)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.secondInterviewPass)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.finalInterviewExecuted)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.offers)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.acceptances)}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-600">
                     {r.acceptanceDate ?? "-"}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmt(r.hires)}
-                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hires)}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-600">
                     {r.hireDate ?? "-"}
                   </td>
@@ -433,7 +509,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 切り口: staff or source (片方ずつ。どちらか選択時、もう片方は "全体" にリセット)
   const [selectedStaff, setSelectedStaff] = useState("全体");
+  const [selectedSource, setSelectedSource] = useState("全体");
   const [selectedMonth, setSelectedMonth] = useState("all");
 
   const fetchData = useCallback(async () => {
@@ -462,10 +540,12 @@ export default function Dashboard() {
     if (!data) return [];
 
     let metrics: MonthlyCAMetrics[];
-    if (selectedStaff === "全体") {
-      metrics = data.monthlyMetrics;
-    } else {
+    if (selectedSource !== "全体") {
+      metrics = data.sourceMetrics[selectedSource] ?? [];
+    } else if (selectedStaff !== "全体") {
       metrics = data.staffMetrics[selectedStaff] ?? [];
+    } else {
+      metrics = data.monthlyMetrics;
     }
 
     if (selectedMonth !== "all") {
@@ -473,7 +553,7 @@ export default function Dashboard() {
     }
 
     return metrics;
-  }, [data, selectedStaff, selectedMonth]);
+  }, [data, selectedStaff, selectedSource, selectedMonth]);
 
   const allMonths = useMemo((): string[] => {
     if (!data) return [];
@@ -502,16 +582,24 @@ export default function Dashboard() {
 
   const averageDays = useMemo((): AverageDays => {
     if (!data) return { entryToInterview: null, entryToAcceptance: null };
-    if (selectedStaff === "全体") {
-      return data.averageDays;
+    if (selectedSource !== "全体") {
+      return (
+        data.sourceAverageDays[selectedSource] ?? {
+          entryToInterview: null,
+          entryToAcceptance: null,
+        }
+      );
     }
-    return (
-      data.staffAverageDays[selectedStaff] ?? {
-        entryToInterview: null,
-        entryToAcceptance: null,
-      }
-    );
-  }, [data, selectedStaff]);
+    if (selectedStaff !== "全体") {
+      return (
+        data.staffAverageDays[selectedStaff] ?? {
+          entryToInterview: null,
+          entryToAcceptance: null,
+        }
+      );
+    }
+    return data.averageDays;
+  }, [data, selectedStaff, selectedSource]);
 
   function cpa(month: string): string {
     const cost = marketingCostMap[month] ?? 0;
@@ -535,6 +623,11 @@ export default function Dashboard() {
   const staffOptions = useMemo((): string[] => {
     if (!data) return ["全体"];
     return ["全体", ...data.staffList];
+  }, [data]);
+
+  const sourceOptions = useMemo((): string[] => {
+    if (!data) return ["全体"];
+    return ["全体", ...data.sourceList];
   }, [data]);
 
   if (loading) return <LoadingSkeleton />;
@@ -605,7 +698,6 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* 公開中の職種コード別 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
               公開中求人の職種コード別内訳
@@ -641,7 +733,10 @@ export default function Dashboard() {
             応募ファネル（エントリー以降の歩留）
           </h2>
           {data ? (
-            <ApplicationFunnelSection funnel={data.applicationFunnel} />
+            <ApplicationFunnelSection
+              funnel={data.applicationFunnel}
+              inProgress={data.inProgress}
+            />
           ) : null}
         </section>
 
@@ -652,10 +747,14 @@ export default function Dashboard() {
             求職者対応（CA）
           </h2>
 
-          <div className="flex flex-wrap gap-3 mb-4">
+          <div className="flex flex-wrap gap-3 mb-4 items-center">
+            <label className="text-xs text-gray-500">担当者:</label>
             <select
               value={selectedStaff}
-              onChange={(e) => setSelectedStaff(e.target.value)}
+              onChange={(e) => {
+                setSelectedStaff(e.target.value);
+                if (e.target.value !== "全体") setSelectedSource("全体");
+              }}
               className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700"
             >
               {staffOptions.map((s) => (
@@ -664,6 +763,24 @@ export default function Dashboard() {
                 </option>
               ))}
             </select>
+
+            <label className="text-xs text-gray-500 ml-2">流入経路:</label>
+            <select
+              value={selectedSource}
+              onChange={(e) => {
+                setSelectedSource(e.target.value);
+                if (e.target.value !== "全体") setSelectedStaff("全体");
+              }}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700"
+            >
+              {sourceOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+
+            <label className="text-xs text-gray-500 ml-2">月:</label>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
@@ -676,6 +793,12 @@ export default function Dashboard() {
                 </option>
               ))}
             </select>
+
+            {(selectedStaff !== "全体" || selectedSource !== "全体") && (
+              <span className="text-xs text-gray-400">
+                ※担当者と流入経路は片方ずつ
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
