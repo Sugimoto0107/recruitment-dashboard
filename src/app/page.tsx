@@ -43,6 +43,66 @@ function pct(numerator: number, denominator: number): string {
   return ((numerator / denominator) * 100).toFixed(1) + "%";
 }
 
+// --- ISO 日時 / 日付文字列を YYYY-MM-DD に整形 ---
+function fmtDate(value: string | null | undefined): string {
+  if (!value) return "-";
+  // YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss... どちらでも対応
+  return value.slice(0, 10);
+}
+
+// --- CA 指標の短縮ラベル (テーブル用) ---
+const CA_METRIC_LABELS: Record<CAMetricKey, string> = {
+  エントリー数: "エントリー",
+  有効エントリー数: "有効",
+  面談数: "面談",
+  推薦社数: "推薦",
+  面接設定数: "面接設定",
+  面接実施数: "面接実施",
+  一次面接通過数: "1次通過",
+  二次面接通過数: "2次通過",
+  内定数: "内定",
+  内定承諾数: "承諾",
+  入社数: "入社",
+};
+
+// --- 月毎カウンタ初期化 ---
+function emptyMonthlyMetrics(month: string): MonthlyCAMetrics {
+  return {
+    month,
+    エントリー数: 0,
+    有効エントリー数: 0,
+    面談数: 0,
+    推薦社数: 0,
+    面接設定数: 0,
+    面接実施数: 0,
+    一次面接通過数: 0,
+    二次面接通過数: 0,
+    内定数: 0,
+    内定承諾数: 0,
+    入社数: 0,
+  };
+}
+
+// --- 複数 source の月別指標を合計 ---
+function combineSourceMetrics(
+  sourceMetrics: Record<string, MonthlyCAMetrics[]>,
+  sources: string[]
+): MonthlyCAMetrics[] {
+  if (sources.length === 0) return [];
+  const map = new Map<string, MonthlyCAMetrics>();
+  for (const s of sources) {
+    const list = sourceMetrics[s] ?? [];
+    for (const m of list) {
+      if (!map.has(m.month)) map.set(m.month, emptyMonthlyMetrics(m.month));
+      const t = map.get(m.month)!;
+      for (const k of CA_METRIC_KEYS) {
+        t[k] += m[k];
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+}
+
 // --- KPIカード ---
 function KPICard({
   title,
@@ -208,7 +268,7 @@ function InProgressPhaseCard({
               </div>
               {showDate && (
                 <div className="text-xs text-gray-400 tabular-nums">
-                  {it.scheduledDate ? `実施予定日: ${it.scheduledDate}` : "実施予定日: 未設定"}
+                  実施予定日: {fmtDate(it.scheduledDate) || "未設定"}
                 </div>
               )}
             </li>
@@ -336,16 +396,66 @@ function ApplicationFunnelSection({
   );
 }
 
+// --- 複数選択ピル UI ---
+function MultiSelectPills({
+  label,
+  options,
+  selected,
+  onToggle,
+  onSelectAll,
+  allActiveLabel = "全体",
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+  onSelectAll: () => void;
+  allActiveLabel?: string;
+}) {
+  const isAll = selected.length === 0;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-gray-500 mr-1 shrink-0">{label}:</span>
+      <button
+        type="button"
+        onClick={onSelectAll}
+        className={`text-xs px-2 py-1 rounded-md border transition ${
+          isAll
+            ? "bg-blue-500 text-white border-blue-500"
+            : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+        }`}
+      >
+        {allActiveLabel}
+      </button>
+      {options.map((opt) => {
+        const active = selected.includes(opt);
+        return (
+          <button
+            type="button"
+            key={opt}
+            onClick={() => onToggle(opt)}
+            className={`text-xs px-2 py-1 rounded-md border transition ${
+              active
+                ? "bg-blue-500 text-white border-blue-500"
+                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+            }`}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // --- 求職者個別テーブル ---
 function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
   const [filter, setFilter] = useState("");
   const filtered = useMemo(() => {
     const q = filter.trim();
     if (!q) {
-      // デフォルト: 最終結果が空のものだけ
       return rows.filter((r) => !r.finalResult);
     }
-    // 検索時: 面談実施済の全員から名前/担当者/最終結果/候補者NOで部分一致
     return rows.filter(
       (r) =>
         r.name.includes(q) ||
@@ -401,10 +511,7 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td
-                  colSpan={18}
-                  className="px-4 py-8 text-center text-gray-400"
-                >
+                <td colSpan={18} className="px-4 py-8 text-center text-gray-400">
                   対象データがありません
                 </td>
               </tr>
@@ -414,24 +521,12 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
                   key={r.id}
                   className="border-t border-gray-100 hover:bg-gray-50"
                 >
-                  <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">
-                    {r.name}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                    {r.candidateNo || "-"}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                    {r.staff || "-"}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
-                    {r.interviewDate ?? "-"}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                    {r.entryDate ?? "-"}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                    {r.finalResult || "-"}
-                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{r.name}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.candidateNo || "-"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.staff || "-"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">{fmtDate(r.interviewDate)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.entryDate)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.finalResult || "-"}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.recommendations)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewSettings)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewsConducted)}</td>
@@ -441,13 +536,9 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.finalInterviewExecuted)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.offers)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.acceptances)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                    {r.acceptanceDate ?? "-"}
-                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.acceptanceDate)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hires)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                    {r.hireDate ?? "-"}
-                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.hireDate)}</td>
                 </tr>
               ))
             )}
@@ -463,12 +554,12 @@ function LoadingSkeleton() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-lg font-bold text-gray-900">採用ダッシュボード</h1>
           <span className="text-xs text-gray-400">読み込み中...</span>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 py-6 space-y-8">
+      <main className="max-w-[1440px] mx-auto px-4 py-6 space-y-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
             <div
@@ -509,10 +600,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 切り口: staff or source (片方ずつ。どちらか選択時、もう片方は "全体" にリセット)
+  // 切り口: staff (single) ／ source (multi) ／ months (multi)
+  // staff と source は片方ずつ (一方を選ぶともう一方はリセット)
   const [selectedStaff, setSelectedStaff] = useState("全体");
-  const [selectedSource, setSelectedSource] = useState("全体");
-  const [selectedMonth, setSelectedMonth] = useState("all");
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -540,20 +632,20 @@ export default function Dashboard() {
     if (!data) return [];
 
     let metrics: MonthlyCAMetrics[];
-    if (selectedSource !== "全体") {
-      metrics = data.sourceMetrics[selectedSource] ?? [];
+    if (selectedSources.length > 0) {
+      metrics = combineSourceMetrics(data.sourceMetrics, selectedSources);
     } else if (selectedStaff !== "全体") {
       metrics = data.staffMetrics[selectedStaff] ?? [];
     } else {
       metrics = data.monthlyMetrics;
     }
 
-    if (selectedMonth !== "all") {
-      metrics = metrics.filter((m) => m.month === selectedMonth);
+    if (selectedMonths.length > 0) {
+      metrics = metrics.filter((m) => selectedMonths.includes(m.month));
     }
 
     return metrics;
-  }, [data, selectedStaff, selectedSource, selectedMonth]);
+  }, [data, selectedStaff, selectedSources, selectedMonths]);
 
   const allMonths = useMemo((): string[] => {
     if (!data) return [];
@@ -582,13 +674,17 @@ export default function Dashboard() {
 
   const averageDays = useMemo((): AverageDays => {
     if (!data) return { entryToInterview: null, entryToAcceptance: null };
-    if (selectedSource !== "全体") {
+    if (selectedSources.length === 1) {
       return (
-        data.sourceAverageDays[selectedSource] ?? {
+        data.sourceAverageDays[selectedSources[0]] ?? {
           entryToInterview: null,
           entryToAcceptance: null,
         }
       );
+    }
+    if (selectedSources.length > 1) {
+      // 複数選択時は全体平均にフォールバック
+      return data.averageDays;
     }
     if (selectedStaff !== "全体") {
       return (
@@ -599,7 +695,7 @@ export default function Dashboard() {
       );
     }
     return data.averageDays;
-  }, [data, selectedStaff, selectedSource]);
+  }, [data, selectedStaff, selectedSources]);
 
   function cpa(month: string): string {
     const cost = marketingCostMap[month] ?? 0;
@@ -620,15 +716,24 @@ export default function Dashboard() {
     }));
   }, [displayMetrics]);
 
-  const staffOptions = useMemo((): string[] => {
-    if (!data) return ["全体"];
-    return ["全体", ...data.staffList];
-  }, [data]);
-
-  const sourceOptions = useMemo((): string[] => {
-    if (!data) return ["全体"];
-    return ["全体", ...data.sourceList];
-  }, [data]);
+  // --- ハンドラ ---
+  function toggleSource(s: string) {
+    setSelectedStaff("全体");
+    setSelectedSources((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+    );
+  }
+  function clearSources() {
+    setSelectedSources([]);
+  }
+  function toggleMonth(m: string) {
+    setSelectedMonths((prev) =>
+      prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+    );
+  }
+  function clearMonths() {
+    setSelectedMonths([]);
+  }
 
   if (loading) return <LoadingSkeleton />;
 
@@ -655,10 +760,15 @@ export default function Dashboard() {
       })
     : "";
 
+  const periodNote =
+    selectedMonths.length > 0
+      ? `表示期間: ${selectedMonths.length} ヶ月`
+      : "表示期間: 全期間";
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-lg font-bold text-gray-900">採用ダッシュボード</h1>
           <div className="flex items-center gap-3">
             <button
@@ -674,7 +784,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6 space-y-8">
+      <main className="max-w-[1440px] mx-auto px-4 py-6 space-y-8">
         {data && !data.isConnected && <NotConnectedBanner />}
 
         {/* ================= RA: 求人開拓 ================= */}
@@ -726,7 +836,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* ================= 応募ファネル (応募管理 DB) ================= */}
+        {/* ================= 応募ファネル ================= */}
         <section>
           <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span className="w-1.5 h-5 bg-cyan-500 rounded-full inline-block" />
@@ -747,58 +857,46 @@ export default function Dashboard() {
             求職者対応（CA）
           </h2>
 
-          <div className="flex flex-wrap gap-3 mb-4 items-center">
-            <label className="text-xs text-gray-500">担当者:</label>
-            <select
-              value={selectedStaff}
-              onChange={(e) => {
-                setSelectedStaff(e.target.value);
-                if (e.target.value !== "全体") setSelectedSource("全体");
-              }}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700"
-            >
-              {staffOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-
-            <label className="text-xs text-gray-500 ml-2">流入経路:</label>
-            <select
-              value={selectedSource}
-              onChange={(e) => {
-                setSelectedSource(e.target.value);
-                if (e.target.value !== "全体") setSelectedStaff("全体");
-              }}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700"
-            >
-              {sourceOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-
-            <label className="text-xs text-gray-500 ml-2">月:</label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700"
-            >
-              <option value="all">全期間</option>
-              {allMonths.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-
-            {(selectedStaff !== "全体" || selectedSource !== "全体") && (
+          <div className="space-y-2 mb-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-500 mr-1 shrink-0">担当者:</span>
+              <select
+                value={selectedStaff}
+                onChange={(e) => {
+                  setSelectedStaff(e.target.value);
+                  if (e.target.value !== "全体") setSelectedSources([]);
+                }}
+                className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700"
+              >
+                <option value="全体">全体</option>
+                {(data?.staffList ?? []).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
               <span className="text-xs text-gray-400">
-                ※担当者と流入経路は片方ずつ
+                ※担当者と流入経路は併用不可
               </span>
-            )}
+            </div>
+
+            <MultiSelectPills
+              label="流入経路"
+              options={data?.sourceList ?? []}
+              selected={selectedSources}
+              onToggle={toggleSource}
+              onSelectAll={clearSources}
+              allActiveLabel="全体"
+            />
+
+            <MultiSelectPills
+              label="期間"
+              options={allMonths}
+              selected={selectedMonths}
+              onToggle={toggleMonth}
+              onSelectAll={clearMonths}
+              allActiveLabel="全期間"
+            />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -822,31 +920,33 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+            <table className="w-full text-xs table-fixed">
+              <colgroup>
+                <col className="w-[68px]" />
+                {CA_METRIC_KEYS.map((k) => (
+                  <col key={k} className="w-[64px]" />
+                ))}
+                <col className="w-[60px]" />
+                <col className="w-[60px]" />
+                <col className="w-[68px]" />
+                <col className="w-[68px]" />
+              </colgroup>
               <thead>
                 <tr className="bg-gray-50 text-gray-600 text-left">
-                  <th className="px-4 py-2.5 font-medium whitespace-nowrap">月</th>
+                  <th className="px-1.5 py-1.5 font-medium">月</th>
                   {CA_METRIC_KEYS.map((key) => (
                     <th
                       key={key}
-                      className="px-3 py-2.5 font-medium whitespace-nowrap text-right"
+                      className="px-1.5 py-1.5 font-medium text-right"
                     >
-                      {key}
+                      {CA_METRIC_LABELS[key]}
                     </th>
                   ))}
-                  <th className="px-3 py-2.5 font-medium whitespace-nowrap text-right">
-                    エントリー→承諾率
-                  </th>
-                  <th className="px-3 py-2.5 font-medium whitespace-nowrap text-right">
-                    面談→承諾率
-                  </th>
-                  <th className="px-3 py-2.5 font-medium whitespace-nowrap text-right">
-                    マーケ費
-                  </th>
-                  <th className="px-3 py-2.5 font-medium whitespace-nowrap text-right">
-                    CPA
-                  </th>
+                  <th className="px-1.5 py-1.5 font-medium text-right">E→承諾率</th>
+                  <th className="px-1.5 py-1.5 font-medium text-right">面談→承諾率</th>
+                  <th className="px-1.5 py-1.5 font-medium text-right">マーケ費</th>
+                  <th className="px-1.5 py-1.5 font-medium text-right">CPA</th>
                 </tr>
               </thead>
               <tbody>
@@ -854,7 +954,7 @@ export default function Dashboard() {
                   <tr>
                     <td
                       colSpan={CA_METRIC_KEYS.length + 5}
-                      className="px-4 py-8 text-center text-gray-400"
+                      className="px-2 py-8 text-center text-gray-400"
                     >
                       データがありません
                     </td>
@@ -866,68 +966,59 @@ export default function Dashboard() {
                         key={i}
                         className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
                       >
-                        <td className="px-4 py-2.5 font-medium text-gray-800">
-                          {row.month}
+                        <td className="px-1.5 py-1.5 font-medium text-gray-800">
+                          {row.month.slice(2)}
                         </td>
                         {CA_METRIC_KEYS.map((key) => (
-                          <td
-                            key={key}
-                            className="px-3 py-2.5 text-right tabular-nums"
-                          >
+                          <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
                             {fmt(row[key])}
                           </td>
                         ))}
-                        <td className="px-3 py-2.5 text-right text-blue-600 font-medium">
+                        <td className="px-1.5 py-1.5 text-right text-blue-600 font-medium">
                           {pct(row.内定承諾数, row.エントリー数)}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-blue-600 font-medium">
+                        <td className="px-1.5 py-1.5 text-right text-blue-600 font-medium">
                           {pct(row.内定承諾数, row.面談数)}
                         </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">
                           {marketingCostMap[row.month] != null
                             ? "¥" + fmt(marketingCostMap[row.month])
                             : "-"}
                         </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">
                           {cpa(row.month)}
                         </td>
                       </tr>
                     ))}
 
-                    <tr className="border-t-2 border-gray-200 bg-blue-50/50 text-xs text-gray-500">
-                      <td className="px-4 py-2 font-medium">転換率</td>
-                      <td className="px-3 py-2 text-right">-</td>
+                    <tr className="border-t-2 border-gray-200 bg-blue-50/50 text-[10px] text-gray-500">
+                      <td className="px-1.5 py-1 font-medium">転換率</td>
+                      <td className="px-1.5 py-1 text-right">-</td>
                       {CA_METRIC_KEYS.slice(1).map((key, idx) => (
-                        <td key={key} className="px-3 py-2 text-right">
-                          {pct(
-                            displayTotals[key],
-                            displayTotals[CA_METRIC_KEYS[idx]]
-                          )}
+                        <td key={key} className="px-1.5 py-1 text-right">
+                          {pct(displayTotals[key], displayTotals[CA_METRIC_KEYS[idx]])}
                         </td>
                       ))}
-                      <td className="px-3 py-2 text-right">-</td>
-                      <td className="px-3 py-2 text-right">-</td>
-                      <td className="px-3 py-2 text-right">-</td>
-                      <td className="px-3 py-2 text-right">-</td>
+                      <td className="px-1.5 py-1 text-right">-</td>
+                      <td className="px-1.5 py-1 text-right">-</td>
+                      <td className="px-1.5 py-1 text-right">-</td>
+                      <td className="px-1.5 py-1 text-right">-</td>
                     </tr>
 
                     <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
-                      <td className="px-4 py-2.5">合計（表示期間）</td>
+                      <td className="px-1.5 py-1.5">合計</td>
                       {CA_METRIC_KEYS.map((key) => (
-                        <td
-                          key={key}
-                          className="px-3 py-2.5 text-right tabular-nums"
-                        >
+                        <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
                           {fmt(displayTotals[key])}
                         </td>
                       ))}
-                      <td className="px-3 py-2.5 text-right text-blue-600">
+                      <td className="px-1.5 py-1.5 text-right text-blue-600">
                         {pct(displayTotals["内定承諾数"], displayTotals["エントリー数"])}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-blue-600">
+                      <td className="px-1.5 py-1.5 text-right text-blue-600">
                         {pct(displayTotals["内定承諾数"], displayTotals["面談数"])}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
+                      <td className="px-1.5 py-1.5 text-right tabular-nums">
                         ¥
                         {fmt(
                           displayMetrics.reduce(
@@ -936,41 +1027,39 @@ export default function Dashboard() {
                           )
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right">-</td>
+                      <td className="px-1.5 py-1.5 text-right">-</td>
                     </tr>
 
                     <tr className="border-t border-gray-200 bg-yellow-50/50 font-semibold text-gray-700">
-                      <td className="px-4 py-2.5">累計（事業開始から）</td>
+                      <td className="px-1.5 py-1.5">累計</td>
                       {CA_METRIC_KEYS.map((key) => (
-                        <td
-                          key={key}
-                          className="px-3 py-2.5 text-right tabular-nums"
-                        >
+                        <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
                           {fmt(grandTotals[key])}
                         </td>
                       ))}
-                      <td className="px-3 py-2.5 text-right text-blue-600">
+                      <td className="px-1.5 py-1.5 text-right text-blue-600">
                         {pct(grandTotals["内定承諾数"], grandTotals["エントリー数"])}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-blue-600">
+                      <td className="px-1.5 py-1.5 text-right text-blue-600">
                         {pct(grandTotals["内定承諾数"], grandTotals["面談数"])}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
+                      <td className="px-1.5 py-1.5 text-right tabular-nums">
                         ¥{fmt(MARKETING_COSTS.reduce((sum, mc) => sum + mc.cost, 0))}
                       </td>
-                      <td className="px-3 py-2.5 text-right">-</td>
+                      <td className="px-1.5 py-1.5 text-right">-</td>
                     </tr>
                   </>
                 )}
               </tbody>
             </table>
           </div>
+          <p className="text-[10px] text-gray-400 mt-1">
+            {periodNote} ｜ 月の表示は YY-MM。短縮ラベル: E=エントリー
+          </p>
 
           {barChartData.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                月別推移
-              </h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">月別推移</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={barChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -1005,18 +1094,9 @@ export default function Dashboard() {
             エントリー者プロフィール
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <DonutChart
-              data={data?.prefectureData ?? []}
-              title="現住所の都道府県別"
-            />
-            <DonutChart
-              data={data?.ageGroupData ?? []}
-              title="年代別構成比"
-            />
-            <DonutChart
-              data={data?.salaryRangeData ?? []}
-              title="現年収帯別構成比"
-            />
+            <DonutChart data={data?.prefectureData ?? []} title="現住所の都道府県別" />
+            <DonutChart data={data?.ageGroupData ?? []} title="年代別構成比" />
+            <DonutChart data={data?.salaryRangeData ?? []} title="現年収帯別構成比" />
           </div>
         </section>
 
@@ -1033,13 +1113,9 @@ export default function Dashboard() {
                   <th className="px-4 py-2.5 font-medium">月</th>
                   <th className="px-3 py-2.5 font-medium text-right">マーケ費用</th>
                   <th className="px-3 py-2.5 font-medium text-right">エントリー数</th>
-                  <th className="px-3 py-2.5 font-medium text-right">
-                    CPA（マーケ費/エントリー）
-                  </th>
+                  <th className="px-3 py-2.5 font-medium text-right">CPA</th>
                   <th className="px-3 py-2.5 font-medium text-right">有効エントリー数</th>
-                  <th className="px-3 py-2.5 font-medium text-right">
-                    有効CPA（マーケ費/有効エントリー）
-                  </th>
+                  <th className="px-3 py-2.5 font-medium text-right">有効CPA</th>
                 </tr>
               </thead>
               <tbody>
@@ -1048,27 +1124,16 @@ export default function Dashboard() {
                   const entries = row?.エントリー数 ?? 0;
                   const validEntries = row?.有効エントリー数 ?? 0;
                   return (
-                    <tr
-                      key={i}
-                      className="border-t border-gray-100 hover:bg-gray-50"
-                    >
-                      <td className="px-4 py-2.5 font-medium text-gray-800">
-                        {mc.month}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-                        ¥{fmt(mc.cost)}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-                        {fmt(entries)}
-                      </td>
+                    <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-2.5 font-medium text-gray-800">{mc.month}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">¥{fmt(mc.cost)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{fmt(entries)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-medium text-orange-600">
                         {entries > 0 && mc.cost > 0
                           ? "¥" + fmt(Math.round(mc.cost / entries))
                           : "-"}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-                        {fmt(validEntries)}
-                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{fmt(validEntries)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-medium text-orange-600">
                         {validEntries > 0 && mc.cost > 0
                           ? "¥" + fmt(Math.round(mc.cost / validEntries))
