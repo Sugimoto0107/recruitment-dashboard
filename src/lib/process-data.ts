@@ -41,7 +41,7 @@ export interface AverageDays {
   entryToAcceptance: number | null;
 }
 
-// --- 応募ファネル指標 (応募管理 DB から集計) ---
+// --- 応募ファネル指標 ---
 export interface ApplicationFunnel {
   totalApplications: number;
   byPhase: Record<string, number>;
@@ -63,16 +63,14 @@ export interface InProgressItem {
   phase: string;
   candidateName: string;
   companyName: string;
-  scheduledDate: string | null; // 各フェーズの実施予定日
+  scheduledDate: string | null;
 }
 
 export interface InProgressBuckets {
-  // 選考中
   書類選考: InProgressItem[];
   一次面接: InProgressItem[];
   二次面接: InProgressItem[];
   最終面接: InProgressItem[];
-  // 内定承諾待ち
   内定: InProgressItem[];
 }
 
@@ -109,12 +107,14 @@ export interface DashboardData {
   // 後方互換
   contractedCompanies: number;
   activeJobs: number;
-  // CA: 月別・担当者別
+  // CA: 月別・担当者別・流入経路別・(担当者×流入経路)
   monthlyMetrics: MonthlyCAMetrics[];
   staffList: string[];
   staffMetrics: Record<string, MonthlyCAMetrics[]>;
   sourceList: string[];
   sourceMetrics: Record<string, MonthlyCAMetrics[]>;
+  // 担当者×流入経路 の 2D 集計 (担当者と流入経路の併用フィルタ用)
+  staffSourceMetrics: Record<string, Record<string, MonthlyCAMetrics[]>>;
   grandTotals: MonthlyCAMetrics;
   averageDays: AverageDays;
   staffAverageDays: Record<string, AverageDays>;
@@ -125,7 +125,6 @@ export interface DashboardData {
   salaryRangeData: ProfileDistribution[];
   // 応募ファネル
   applicationFunnel: ApplicationFunnel;
-  // 現フェーズ別の選考中・承諾待ち
   inProgress: InProgressBuckets;
   // 求職者個別
   jobSeekerSummaries: JobSeekerSummary[];
@@ -300,7 +299,7 @@ export function computeStaffAverageDays(
 }
 
 // =============================================================
-// 流入経路別 CA 指標 (担当者別と同じロジックで source で切り出す)
+// 流入経路別 CA 指標
 // =============================================================
 export function computeSourceMetrics(seekers: RawJobSeeker[]): {
   sourceList: string[];
@@ -335,6 +334,32 @@ export function computeSourceAverageDays(
   const result: Record<string, AverageDays> = {};
   for (const [src, group] of groups) {
     result[src] = computeAverageDays(group);
+  }
+  return result;
+}
+
+// =============================================================
+// 担当者 × 流入経路 の 2D 集計 (併用フィルタ用)
+// =============================================================
+export function computeStaffSourceMetrics(
+  seekers: RawJobSeeker[]
+): Record<string, Record<string, MonthlyCAMetrics[]>> {
+  const groups = new Map<string, Map<string, RawJobSeeker[]>>();
+  for (const s of seekers) {
+    const staff = s.staff || "未設定";
+    const src = s.source || "未設定";
+    if (!groups.has(staff)) groups.set(staff, new Map());
+    const staffMap = groups.get(staff)!;
+    if (!staffMap.has(src)) staffMap.set(src, []);
+    staffMap.get(src)!.push(s);
+  }
+
+  const result: Record<string, Record<string, MonthlyCAMetrics[]>> = {};
+  for (const [staff, staffMap] of groups) {
+    result[staff] = {};
+    for (const [src, list] of staffMap) {
+      result[staff][src] = computeMonthlyMetrics(list);
+    }
   }
   return result;
 }
@@ -448,7 +473,7 @@ export function computeSalaryDistribution(
 }
 
 // =============================================================
-// 応募ファネル (応募管理 DB)
+// 応募ファネル
 // =============================================================
 export function computeApplicationFunnel(
   apps: RawApplication[]
@@ -518,7 +543,10 @@ export function computeInProgress(
     内定: [],
   };
 
-  function buildItem(a: RawApplication, scheduledDate: string | null): InProgressItem {
+  function buildItem(
+    a: RawApplication,
+    scheduledDate: string | null
+  ): InProgressItem {
     const candidate = a.seekerIds
       .map((id) => seekerById.get(id))
       .find((s) => !!s);
@@ -559,7 +587,6 @@ export function computeInProgress(
     }
   }
 
-  // 各バケットを 実施予定日 昇順 (近い順) でソート
   const sortByDate = (a: InProgressItem, b: InProgressItem) => {
     const aDate = a.scheduledDate ?? "9999-12-31";
     const bDate = b.scheduledDate ?? "9999-12-31";
@@ -576,9 +603,6 @@ export function computeInProgress(
 
 // =============================================================
 // 求職者サマリー (個別)
-// 面談実施済かつ無効でない人だけを返す
-// 検索/全表示の切り分けはフロント側で行う
-// 並び順: 面談実施日 降順
 // =============================================================
 export function buildJobSeekerSummaries(
   seekers: RawJobSeeker[]
@@ -609,7 +633,7 @@ export function buildJobSeekerSummaries(
     .sort((a, b) => {
       const aDate = a.interviewDate ?? "";
       const bDate = b.interviewDate ?? "";
-      return bDate.localeCompare(aDate); // 面談日の降順
+      return bDate.localeCompare(aDate);
     });
 }
 
@@ -626,6 +650,7 @@ export function processAllData(
   const monthlyMetrics = computeMonthlyMetrics(seekers);
   const { staffList, staffMetrics } = computeStaffMetrics(seekers);
   const { sourceList, sourceMetrics } = computeSourceMetrics(seekers);
+  const staffSourceMetrics = computeStaffSourceMetrics(seekers);
   const grandTotals = computeGrandTotals(monthlyMetrics);
   const averageDays = computeAverageDays(seekers);
   const staffAverageDays = computeStaffAverageDays(seekers);
@@ -653,6 +678,7 @@ export function processAllData(
     staffMetrics,
     sourceList,
     sourceMetrics,
+    staffSourceMetrics,
     grandTotals,
     averageDays,
     staffAverageDays,

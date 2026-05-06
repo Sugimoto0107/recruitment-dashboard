@@ -26,14 +26,12 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// --- カラーパレット ---
 const COLORS = [
   "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
   "#EC4899", "#06B6D4", "#F97316", "#84CC16", "#6366F1",
   "#14B8A6", "#D946EF",
 ];
 
-// --- 数値フォーマット ---
 function fmt(n: number): string {
   return n.toLocaleString("ja-JP");
 }
@@ -43,14 +41,11 @@ function pct(numerator: number, denominator: number): string {
   return ((numerator / denominator) * 100).toFixed(1) + "%";
 }
 
-// --- ISO 日時 / 日付文字列を YYYY-MM-DD に整形 ---
 function fmtDate(value: string | null | undefined): string {
   if (!value) return "-";
-  // YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss... どちらでも対応
   return value.slice(0, 10);
 }
 
-// --- CA 指標の短縮ラベル (テーブル用) ---
 const CA_METRIC_LABELS: Record<CAMetricKey, string> = {
   エントリー数: "エントリー",
   有効エントリー数: "有効",
@@ -65,7 +60,6 @@ const CA_METRIC_LABELS: Record<CAMetricKey, string> = {
   入社数: "入社",
 };
 
-// --- 月毎カウンタ初期化 ---
 function emptyMonthlyMetrics(month: string): MonthlyCAMetrics {
   return {
     month,
@@ -83,15 +77,11 @@ function emptyMonthlyMetrics(month: string): MonthlyCAMetrics {
   };
 }
 
-// --- 複数 source の月別指標を合計 ---
-function combineSourceMetrics(
-  sourceMetrics: Record<string, MonthlyCAMetrics[]>,
-  sources: string[]
-): MonthlyCAMetrics[] {
-  if (sources.length === 0) return [];
+// 複数 list の月別指標を合計
+function sumMetricsLists(lists: MonthlyCAMetrics[][]): MonthlyCAMetrics[] {
+  if (lists.length === 0) return [];
   const map = new Map<string, MonthlyCAMetrics>();
-  for (const s of sources) {
-    const list = sourceMetrics[s] ?? [];
+  for (const list of lists) {
     for (const m of list) {
       if (!map.has(m.month)) map.set(m.month, emptyMonthlyMetrics(m.month));
       const t = map.get(m.month)!;
@@ -100,19 +90,32 @@ function combineSourceMetrics(
       }
     }
   }
-  return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+  return Array.from(map.values()).sort((a, b) =>
+    a.month.localeCompare(b.month)
+  );
+}
+
+// 担当者×流入経路 を併用してメトリクスを取得
+function selectMetrics(
+  data: DashboardData,
+  staff: string,
+  sources: string[]
+): MonthlyCAMetrics[] {
+  const isAllStaff = staff === "全体";
+  const isAllSources = sources.length === 0;
+
+  if (isAllStaff && isAllSources) return data.monthlyMetrics;
+  if (!isAllStaff && isAllSources) return data.staffMetrics[staff] ?? [];
+  if (isAllStaff && !isAllSources) {
+    return sumMetricsLists(sources.map((s) => data.sourceMetrics[s] ?? []));
+  }
+  // 担当者×流入経路 (両方選択中)
+  const staffMap = data.staffSourceMetrics[staff] ?? {};
+  return sumMetricsLists(sources.map((s) => staffMap[s] ?? []));
 }
 
 // --- KPIカード ---
-function KPICard({
-  title,
-  value,
-  sub,
-}: {
-  title: string;
-  value: string | number;
-  sub?: string;
-}) {
+function KPICard({ title, value, sub }: { title: string; value: string | number; sub?: string }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-1">
       <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{title}</p>
@@ -124,23 +127,28 @@ function KPICard({
   );
 }
 
-// --- ステータス別ブレイクダウンカード ---
+// --- ステータス別カード ---
 function StatusBreakdownCard({
   title,
   total,
   byStatus,
   highlight,
+  subtitle,
 }: {
   title: string;
   total: number;
   byStatus: Record<string, number>;
   highlight?: string;
+  subtitle?: string;
 }) {
   const entries = Object.entries(byStatus).sort((a, b) => b[1] - a[1]);
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{title}</p>
-      <p className="text-3xl font-bold text-gray-900 mt-1 mb-3">{fmt(total)}</p>
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{title}</p>
+        {subtitle && <p className="text-[10px] text-gray-400">{subtitle}</p>}
+      </div>
+      <p className="text-3xl font-bold text-gray-900 mb-3">{fmt(total)}</p>
       <div className="space-y-1.5">
         {entries.map(([status, count]) => (
           <div
@@ -161,13 +169,7 @@ function StatusBreakdownCard({
 }
 
 // --- 円グラフ ---
-function DonutChart({
-  data,
-  title,
-}: {
-  data: ProfileDistribution[];
-  title: string;
-}) {
+function DonutChart({ data, title }: { data: ProfileDistribution[]; title: string }) {
   if (data.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -201,9 +203,7 @@ function DonutChart({
               <Cell key={i} fill={COLORS[i % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip
-            formatter={(value: any) => [fmt(Number(value)) + "人", "人数"]}
-          />
+          <Tooltip formatter={(value: any) => [fmt(Number(value)) + "人", "人数"]} />
         </PieChart>
       </ResponsiveContainer>
       <div className="mt-2 space-y-1">
@@ -226,7 +226,7 @@ function DonutChart({
   );
 }
 
-// --- 選考中・承諾待ちのフェーズカード ---
+// --- 選考中・承諾待ちカード ---
 function InProgressPhaseCard({
   title,
   items,
@@ -242,14 +242,10 @@ function InProgressPhaseCard({
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span
-            className={`w-1 h-4 ${accentClass} rounded-full inline-block`}
-          />
+          <span className={`w-1 h-4 ${accentClass} rounded-full inline-block`} />
           <h4 className="text-sm font-semibold text-gray-800">{title}</h4>
         </div>
-        <span className="text-xs text-gray-500 tabular-nums">
-          {fmt(items.length)} 件
-        </span>
+        <span className="text-xs text-gray-500 tabular-nums">{fmt(items.length)} 件</span>
       </div>
       {items.length === 0 ? (
         <p className="text-xs text-gray-400 py-2">該当なし</p>
@@ -260,12 +256,8 @@ function InProgressPhaseCard({
               key={it.applicationId}
               className="text-sm border-l-2 border-gray-200 pl-2 py-0.5"
             >
-              <div className="font-medium text-gray-800 truncate">
-                {it.candidateName}
-              </div>
-              <div className="text-xs text-gray-600 truncate">
-                {it.companyName}
-              </div>
+              <div className="font-medium text-gray-800 truncate">{it.candidateName}</div>
+              <div className="text-xs text-gray-600 truncate">{it.companyName}</div>
               {showDate && (
                 <div className="text-xs text-gray-400 tabular-nums">
                   実施予定日: {fmtDate(it.scheduledDate) || "未設定"}
@@ -279,7 +271,6 @@ function InProgressPhaseCard({
   );
 }
 
-// --- 応募ファネルセクション ---
 function ApplicationFunnelSection({
   funnel,
   inProgress,
@@ -297,7 +288,7 @@ function ApplicationFunnelSection({
 }) {
   const base = Math.max(funnel.recommended, 1);
 
-  const rows: { label: string; count: number }[] = [
+  const rows = [
     { label: "推薦", count: funnel.recommended },
     { label: "一次面接 実施", count: funnel.firstInterview },
     { label: "二次面接 実施", count: funnel.secondInterview },
@@ -309,7 +300,6 @@ function ApplicationFunnelSection({
 
   return (
     <div className="space-y-6">
-      {/* メインファネル */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -324,16 +314,9 @@ function ApplicationFunnelSection({
             {rows.map((row, i) => {
               const prev = i === 0 ? row.count : rows[i - 1].count;
               return (
-                <tr
-                  key={row.label}
-                  className="border-t border-gray-100 hover:bg-gray-50"
-                >
-                  <td className="px-4 py-2.5 font-medium text-gray-800">
-                    {row.label}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
-                    {fmt(row.count)}
-                  </td>
+                <tr key={row.label} className="border-t border-gray-100 hover:bg-gray-50">
+                  <td className="px-4 py-2.5 font-medium text-gray-800">{row.label}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{fmt(row.count)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-blue-600">
                     {pct(row.count, base)}
                   </td>
@@ -347,37 +330,19 @@ function ApplicationFunnelSection({
         </table>
       </div>
 
-      {/* 選考中の方 */}
       <div>
         <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
           <span className="w-1 h-4 bg-yellow-500 rounded-full inline-block" />
           選考中の方
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          <InProgressPhaseCard
-            title="書類選考"
-            items={inProgress.書類選考}
-            accentClass="bg-blue-400"
-          />
-          <InProgressPhaseCard
-            title="一次面接"
-            items={inProgress.一次面接}
-            accentClass="bg-yellow-400"
-          />
-          <InProgressPhaseCard
-            title="二次面接"
-            items={inProgress.二次面接}
-            accentClass="bg-orange-400"
-          />
-          <InProgressPhaseCard
-            title="最終面接"
-            items={inProgress.最終面接}
-            accentClass="bg-pink-400"
-          />
+          <InProgressPhaseCard title="書類選考" items={inProgress.書類選考} accentClass="bg-blue-400" />
+          <InProgressPhaseCard title="一次面接" items={inProgress.一次面接} accentClass="bg-yellow-400" />
+          <InProgressPhaseCard title="二次面接" items={inProgress.二次面接} accentClass="bg-orange-400" />
+          <InProgressPhaseCard title="最終面接" items={inProgress.最終面接} accentClass="bg-pink-400" />
         </div>
       </div>
 
-      {/* 内定承諾待ちの方 */}
       <div>
         <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
           <span className="w-1 h-4 bg-green-500 rounded-full inline-block" />
@@ -517,10 +482,7 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
               </tr>
             ) : (
               filtered.map((r) => (
-                <tr
-                  key={r.id}
-                  className="border-t border-gray-100 hover:bg-gray-50"
-                >
+                <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{r.name}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.candidateNo || "-"}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.staff || "-"}</td>
@@ -549,7 +511,6 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
   );
 }
 
-// --- ローディング ---
 function LoadingSkeleton() {
   return (
     <div className="min-h-screen bg-gray-50">
@@ -562,10 +523,7 @@ function LoadingSkeleton() {
       <main className="max-w-[1440px] mx-auto px-4 py-6 space-y-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div
-              key={i}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 animate-pulse"
-            >
+            <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 animate-pulse">
               <div className="h-3 bg-gray-200 rounded w-20 mb-3" />
               <div className="h-7 bg-gray-200 rounded w-16" />
             </div>
@@ -584,7 +542,7 @@ function NotConnectedBanner() {
         <div>
           <p className="text-sm font-semibold text-yellow-800">Notion未接続</p>
           <p className="text-xs text-yellow-600">
-            .env.local に NOTION_API_KEY を設定してください。現在はダミーデータを表示しています。
+            .env.local に NOTION_API_KEY を設定してください。
           </p>
         </div>
       </div>
@@ -600,8 +558,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 切り口: staff (single) ／ source (multi) ／ months (multi)
-  // staff と source は片方ずつ (一方を選ぶともう一方はリセット)
+  // 担当者 (single) / 流入経路 (multi) / 期間 (multi)
+  // すべて併用可能
   const [selectedStaff, setSelectedStaff] = useState("全体");
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
@@ -630,20 +588,10 @@ export default function Dashboard() {
 
   const displayMetrics = useMemo((): MonthlyCAMetrics[] => {
     if (!data) return [];
-
-    let metrics: MonthlyCAMetrics[];
-    if (selectedSources.length > 0) {
-      metrics = combineSourceMetrics(data.sourceMetrics, selectedSources);
-    } else if (selectedStaff !== "全体") {
-      metrics = data.staffMetrics[selectedStaff] ?? [];
-    } else {
-      metrics = data.monthlyMetrics;
-    }
-
+    let metrics = selectMetrics(data, selectedStaff, selectedSources);
     if (selectedMonths.length > 0) {
       metrics = metrics.filter((m) => selectedMonths.includes(m.month));
     }
-
     return metrics;
   }, [data, selectedStaff, selectedSources, selectedMonths]);
 
@@ -674,6 +622,11 @@ export default function Dashboard() {
 
   const averageDays = useMemo((): AverageDays => {
     if (!data) return { entryToInterview: null, entryToAcceptance: null };
+    // 担当者と流入経路を併用している場合は全体平均にフォールバック
+    // (cross-filter では正確な平均を計算できないため)
+    if (selectedStaff !== "全体" && selectedSources.length > 0) {
+      return data.averageDays;
+    }
     if (selectedSources.length === 1) {
       return (
         data.sourceAverageDays[selectedSources[0]] ?? {
@@ -683,7 +636,6 @@ export default function Dashboard() {
       );
     }
     if (selectedSources.length > 1) {
-      // 複数選択時は全体平均にフォールバック
       return data.averageDays;
     }
     if (selectedStaff !== "全体") {
@@ -716,9 +668,7 @@ export default function Dashboard() {
     }));
   }, [displayMetrics]);
 
-  // --- ハンドラ ---
   function toggleSource(s: string) {
-    setSelectedStaff("全体");
     setSelectedSources((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
     );
@@ -755,9 +705,7 @@ export default function Dashboard() {
   }
 
   const generatedAt = data?.generatedAt
-    ? new Date(data.generatedAt).toLocaleString("ja-JP", {
-        timeZone: "Asia/Tokyo",
-      })
+    ? new Date(data.generatedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
     : "";
 
   const periodNote =
@@ -793,7 +741,7 @@ export default function Dashboard() {
             <span className="w-1.5 h-5 bg-blue-500 rounded-full inline-block" />
             求人開拓（RA）
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <StatusBreakdownCard
               title="契約企業数"
               total={data?.companySummary.total ?? 0}
@@ -801,16 +749,43 @@ export default function Dashboard() {
               highlight="契約"
             />
             <StatusBreakdownCard
-              title="求人数"
-              total={data?.jobSummary.total ?? 0}
-              byStatus={data?.jobSummary.byStatus ?? {}}
+              title="求人数（飲食以外）"
+              subtitle="求人案件管理 DB"
+              total={data?.jobSummary.shokuhinIgai.total ?? 0}
+              byStatus={data?.jobSummary.shokuhinIgai.byStatus ?? {}}
+              highlight="公開中"
+            />
+            <StatusBreakdownCard
+              title="求人数（飲食）"
+              subtitle="求人案件管理(飲食) DB"
+              total={data?.jobSummary.shokuhin.total ?? 0}
+              byStatus={data?.jobSummary.shokuhin.byStatus ?? {}}
               highlight="公開中"
             />
           </div>
 
+          {/* 合算サマリ (薄め) */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-3 mt-3 flex flex-wrap items-center gap-4 text-sm">
+            <span className="text-xs text-gray-500 uppercase tracking-wide">求人合計</span>
+            <span className="font-bold text-gray-900 text-lg tabular-nums">
+              {fmt(data?.jobSummary.total ?? 0)}
+            </span>
+            <span className="text-xs text-gray-400">
+              飲食以外 {fmt(data?.jobSummary.shokuhinIgai.total ?? 0)} ／ 飲食 {fmt(data?.jobSummary.shokuhin.total ?? 0)}
+            </span>
+            {Object.entries(data?.jobSummary.byStatus ?? {})
+              .filter(([, n]) => n > 0)
+              .sort((a, b) => b[1] - a[1])
+              .map(([status, count]) => (
+                <span key={status} className="text-xs text-gray-600">
+                  {status}: <span className="tabular-nums font-medium text-gray-800">{fmt(count)}</span>
+                </span>
+              ))}
+          </div>
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              公開中求人の職種コード別内訳
+              公開中求人の職種コード別内訳（飲食以外＋飲食 合算）
             </h3>
             {data && Object.keys(data.jobSummary.publishedByJobCode).length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
@@ -843,10 +818,7 @@ export default function Dashboard() {
             応募ファネル（エントリー以降の歩留）
           </h2>
           {data ? (
-            <ApplicationFunnelSection
-              funnel={data.applicationFunnel}
-              inProgress={data.inProgress}
-            />
+            <ApplicationFunnelSection funnel={data.applicationFunnel} inProgress={data.inProgress} />
           ) : null}
         </section>
 
@@ -862,10 +834,7 @@ export default function Dashboard() {
               <span className="text-xs text-gray-500 mr-1 shrink-0">担当者:</span>
               <select
                 value={selectedStaff}
-                onChange={(e) => {
-                  setSelectedStaff(e.target.value);
-                  if (e.target.value !== "全体") setSelectedSources([]);
-                }}
+                onChange={(e) => setSelectedStaff(e.target.value)}
                 className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-700"
               >
                 <option value="全体">全体</option>
@@ -876,7 +845,7 @@ export default function Dashboard() {
                 ))}
               </select>
               <span className="text-xs text-gray-400">
-                ※担当者と流入経路は併用不可
+                ※担当者と流入経路は併用可（AND 条件）
               </span>
             </div>
 
@@ -936,10 +905,7 @@ export default function Dashboard() {
                 <tr className="bg-gray-50 text-gray-600 text-left">
                   <th className="px-1.5 py-1.5 font-medium">月</th>
                   {CA_METRIC_KEYS.map((key) => (
-                    <th
-                      key={key}
-                      className="px-1.5 py-1.5 font-medium text-right"
-                    >
+                    <th key={key} className="px-1.5 py-1.5 font-medium text-right">
                       {CA_METRIC_LABELS[key]}
                     </th>
                   ))}
@@ -962,13 +928,8 @@ export default function Dashboard() {
                 ) : (
                   <>
                     {displayMetrics.map((row, i) => (
-                      <tr
-                        key={i}
-                        className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
-                      >
-                        <td className="px-1.5 py-1.5 font-medium text-gray-800">
-                          {row.month.slice(2)}
-                        </td>
+                      <tr key={i} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="px-1.5 py-1.5 font-medium text-gray-800">{row.month.slice(2)}</td>
                         {CA_METRIC_KEYS.map((key) => (
                           <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
                             {fmt(row[key])}
@@ -985,9 +946,7 @@ export default function Dashboard() {
                             ? "¥" + fmt(marketingCostMap[row.month])
                             : "-"}
                         </td>
-                        <td className="px-1.5 py-1.5 text-right tabular-nums">
-                          {cpa(row.month)}
-                        </td>
+                        <td className="px-1.5 py-1.5 text-right tabular-nums">{cpa(row.month)}</td>
                       </tr>
                     ))}
 

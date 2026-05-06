@@ -1,8 +1,5 @@
 // ===================================
 // ダッシュボードAPI: メインエンドポイント
-// 4つのNotionデータベースから取得・集計して返す
-//
-// キャッシュ方針: 24時間 (毎朝 GitHub Actions Cron 経由で revalidate される)
 // ===================================
 
 import {
@@ -14,15 +11,28 @@ import {
 } from "@/lib/notion";
 import { processAllData, DashboardData } from "@/lib/process-data";
 
-// 1日キャッシュ (再生成は /api/revalidate 経由 or revalidate 期限切れ)
 export const revalidate = 86400;
+
+function emptyJobCategory() {
+  return {
+    total: 0,
+    byStatus: {},
+    publishedByJobCode: {},
+  };
+}
 
 function emptyData(): DashboardData {
   return {
     isConnected: false,
     generatedAt: new Date().toISOString(),
     companySummary: { total: 0, byStatus: {}, records: [] },
-    jobSummary: { total: 0, byStatus: {}, publishedByJobCode: {} },
+    jobSummary: {
+      total: 0,
+      byStatus: {},
+      publishedByJobCode: {},
+      shokuhinIgai: emptyJobCategory(),
+      shokuhin: emptyJobCategory(),
+    },
     contractedCompanies: 0,
     activeJobs: 0,
     monthlyMetrics: [],
@@ -30,6 +40,7 @@ function emptyData(): DashboardData {
     staffMetrics: {},
     sourceList: [],
     sourceMetrics: {},
+    staffSourceMetrics: {},
     grandTotals: {
       month: "累計",
       エントリー数: 0,

@@ -1,13 +1,14 @@
 // ===================================
 // Notion API クライアント
-// 契約企業・求人案件・応募・求職者の4つのデータベースから取得
+// 契約企業・求人案件(飲食以外/飲食)・応募・求職者から取得
 // ===================================
 
 import { Client } from "@notionhq/client";
 
 // --- データソースID ---
 const COMPANY_DS_ID = "bde1abad-8837-436b-9902-75ba5374f93d";
-const JOB_DS_ID = "1ee32b1e-1895-446e-894b-033dadb6fc3f";
+const JOB_DS_ID = "1ee32b1e-1895-446e-894b-033dadb6fc3f"; // 求人案件管理 (飲食以外)
+const JOB_SHOKUHIN_DS_ID = "5887868b-5170-8219-a131-875ff676ad9b"; // 求人案件管理(飲食)
 const APPLICATION_DS_ID = "37e90a21-501e-443f-ac28-de8b38989d06";
 const SEEKER_DS_ID = "9404513f-bd36-40a4-a869-ccbc605b101c";
 
@@ -94,7 +95,7 @@ export interface CompanyRecord {
 export interface CompanySummary {
   total: number;
   byStatus: Record<string, number>;
-  records: CompanyRecord[]; // ID -> 企業名 解決用
+  records: CompanyRecord[];
 }
 
 export async function getContractCompanySummary(): Promise<CompanySummary> {
@@ -124,62 +125,138 @@ export async function getContractCompanySummary(): Promise<CompanySummary> {
   }
 }
 
-// 後方互換: 旧 API
+// 後方互換
 export async function getContractCompanyCount(): Promise<number> {
   const summary = await getContractCompanySummary();
   return summary.total;
 }
 
 // =====================================================
-// 求人: 総数 + ステータス別 + 公開中の職種コード別
+// 求人: 飲食以外 / 飲食 を別 DB から取得して合算
 // =====================================================
-export interface JobSummary {
+export interface JobCategorySummary {
   total: number;
   byStatus: Record<string, number>;
   publishedByJobCode: Record<string, number>;
 }
 
+export interface JobSummary {
+  // 全体合算
+  total: number;
+  byStatus: Record<string, number>;
+  publishedByJobCode: Record<string, number>;
+  // 飲食 / 飲食以外 のカテゴリ別
+  shokuhinIgai: JobCategorySummary; // 飲食以外
+  shokuhin: JobCategorySummary; // 飲食
+}
+
+function emptyJobCategory(): JobCategorySummary {
+  const byStatus: Record<string, number> = {};
+  for (const status of JOB_STATUSES) byStatus[status] = 0;
+  return { total: 0, byStatus, publishedByJobCode: {} };
+}
+
+function aggregateJobs(results: any[]): JobCategorySummary {
+  const byStatus: Record<string, number> = {};
+  for (const status of JOB_STATUSES) byStatus[status] = 0;
+  const publishedByJobCode: Record<string, number> = {};
+
+  for (const page of results) {
+    const status = page.properties?.["ステータス"]?.select?.name as
+      | string
+      | undefined;
+    const key = status ?? "未設定";
+    byStatus[key] = (byStatus[key] ?? 0) + 1;
+
+    if (status === "公開中") {
+      const code = (
+        page.properties?.["職種コード"]?.rich_text?.[0]?.text?.content ?? ""
+      ).trim();
+      const codeKey = code || "未設定";
+      publishedByJobCode[codeKey] = (publishedByJobCode[codeKey] ?? 0) + 1;
+    }
+  }
+  return { total: results.length, byStatus, publishedByJobCode };
+}
+
+function mergeJobCategories(
+  a: JobCategorySummary,
+  b: JobCategorySummary
+): {
+  total: number;
+  byStatus: Record<string, number>;
+  publishedByJobCode: Record<string, number>;
+} {
+  const byStatus: Record<string, number> = {};
+  for (const k of Object.keys(a.byStatus)) byStatus[k] = a.byStatus[k];
+  for (const k of Object.keys(b.byStatus))
+    byStatus[k] = (byStatus[k] ?? 0) + b.byStatus[k];
+
+  const publishedByJobCode: Record<string, number> = {
+    ...a.publishedByJobCode,
+  };
+  for (const k of Object.keys(b.publishedByJobCode))
+    publishedByJobCode[k] =
+      (publishedByJobCode[k] ?? 0) + b.publishedByJobCode[k];
+
+  return {
+    total: a.total + b.total,
+    byStatus,
+    publishedByJobCode,
+  };
+}
+
 export async function getJobSummary(): Promise<JobSummary> {
   const notion = getNotionClient();
-  if (!notion) return { total: 0, byStatus: {}, publishedByJobCode: {} };
+  if (!notion) {
+    const empty: JobSummary = {
+      total: 0,
+      byStatus: {},
+      publishedByJobCode: {},
+      shokuhinIgai: emptyJobCategory(),
+      shokuhin: emptyJobCategory(),
+    };
+    return empty;
+  }
 
   try {
-    const results = await queryAllPages(notion, JOB_DS_ID);
-    const byStatus: Record<string, number> = {};
-    for (const status of JOB_STATUSES) byStatus[status] = 0;
-    const publishedByJobCode: Record<string, number> = {};
+    // 2つの DB を並列取得
+    const [igaiResults, shokuhinResults] = await Promise.all([
+      queryAllPages(notion, JOB_DS_ID),
+      queryAllPages(notion, JOB_SHOKUHIN_DS_ID),
+    ]);
 
-    for (const page of results) {
-      const status = page.properties?.["ステータス"]?.select?.name as
-        | string
-        | undefined;
-      const key = status ?? "未設定";
-      byStatus[key] = (byStatus[key] ?? 0) + 1;
+    const shokuhinIgai = aggregateJobs(igaiResults);
+    const shokuhin = aggregateJobs(shokuhinResults);
+    const merged = mergeJobCategories(shokuhinIgai, shokuhin);
 
-      if (status === "公開中") {
-        const code = (
-          page.properties?.["職種コード"]?.rich_text?.[0]?.text?.content ?? ""
-        ).trim();
-        const codeKey = code || "未設定";
-        publishedByJobCode[codeKey] =
-          (publishedByJobCode[codeKey] ?? 0) + 1;
-      }
-    }
-    return { total: results.length, byStatus, publishedByJobCode };
+    return {
+      total: merged.total,
+      byStatus: merged.byStatus,
+      publishedByJobCode: merged.publishedByJobCode,
+      shokuhinIgai,
+      shokuhin,
+    };
   } catch (error) {
     console.error("Notion API error (jobs):", error);
-    return { total: 0, byStatus: {}, publishedByJobCode: {} };
+    return {
+      total: 0,
+      byStatus: {},
+      publishedByJobCode: {},
+      shokuhinIgai: emptyJobCategory(),
+      shokuhin: emptyJobCategory(),
+    };
   }
 }
 
-// 後方互換: 旧 API
+// 後方互換
 export async function getActiveJobCount(): Promise<number> {
   const summary = await getJobSummary();
   return summary.byStatus["公開中"] ?? 0;
 }
 
 // =====================================================
-// 応募 (応募管理 DB) - 歩留まり用の生データ
+// 応募 (応募管理 DB)
 // =====================================================
 export interface RawApplication {
   id: string;
@@ -195,7 +272,6 @@ export interface RawApplication {
   offerDate: string | null;
   acceptanceDate: string | null;
   expectedJoinDate: string | null;
-  // リレーション (ID 配列)
   seekerIds: string[];
   companyIds: string[];
 }
