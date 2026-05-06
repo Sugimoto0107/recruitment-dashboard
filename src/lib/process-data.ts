@@ -375,8 +375,9 @@ export function computePrefectureDistribution(
 
   for (const s of seekers) {
     if (!s.entryDate) continue;
-    const pref = s.prefecture || "不明";
-    counts.set(pref, (counts.get(pref) ?? 0) + 1);
+    // 値無しは除外 (3つのチャートで分母を揃える方針)
+    if (!s.prefecture) continue;
+    counts.set(s.prefecture, (counts.get(s.prefecture) ?? 0) + 1);
     total++;
   }
 
@@ -441,7 +442,8 @@ export function computeSalaryDistribution(
   for (const s of seekers) {
     if (!s.entryDate || s.currentSalary === null) continue;
     total++;
-    const salary = s.currentSalary;
+    // Notion 側の「現職年収」は円単位で入力されているため、万円単位 (÷10000) に変換
+    const salary = s.currentSalary / 10000;
     if (salary < 300) {
       ranges["〜300万"]++;
     } else if (salary < 500) {
