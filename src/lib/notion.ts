@@ -5,12 +5,31 @@
 
 import { Client } from "@notionhq/client";
 
-// --- データソースID ---
-const COMPANY_DS_ID = "bde1abad-8837-436b-9902-75ba5374f93d";
-const JOB_DS_ID = "1ee32b1e-1895-446e-894b-033dadb6fc3f"; // 求人案件管理 (飲食以外)
-const JOB_SHOKUHIN_DS_ID = "5887868b-5170-8219-a131-875ff676ad9b"; // 求人案件管理(飲食)
-const APPLICATION_DS_ID = "37e90a21-501e-443f-ac28-de8b38989d06";
-const SEEKER_DS_ID = "9404513f-bd36-40a4-a869-ccbc605b101c";
+// --- UUID形式に正規化（ハイフンなし32桁→8-4-4-4-12形式） ---
+function toUuid(id: string): string {
+  if (!id) return id;
+  const s = id.replace(/-/g, "");
+  if (s.length !== 32) return id;
+  return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+}
+
+// --- DB ID（環境変数から取得） ---
+function getCompanyDbId(): string {
+  return toUuid(process.env.NOTION_COMPANY_DB_ID ?? "");
+}
+function getJobIgaiDbId(): string {
+  return toUuid(process.env.NOTION_JOB_DB_ID ?? "");
+}
+function getJobShokuhinDbId(): string {
+  return toUuid(process.env.NOTION_JOB_SHOKUHIN_DB_ID ?? "");
+}
+function getApplicationDbId(): string {
+  // GAS応募管理DBと同一（URLのページID）
+  return toUuid(process.env.NOTION_APPLICATION_DB_ID ?? "388e7839dbed4aa6a18f38ea75334502");
+}
+function getSeekerDbId(): string {
+  return toUuid(process.env.NOTION_SEEKER_DB_ID ?? "");
+}
 
 // --- ステータス候補 (Notion 側の select option と一致させる) ---
 export const COMPANY_STATUSES = [
@@ -50,30 +69,36 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 export type ApplicationPhase = (typeof APPLICATION_PHASES)[number];
 
 // --- Notion クライアント初期化 ---
+// notionVersion: "2022-06-28" を明示指定（SDKデフォルトの2025系ではdatabases.queryが廃止のため）
 function getNotionClient(): Client | null {
   const apiKey = process.env.NOTION_API_KEY;
   if (!apiKey || apiKey === "your_notion_api_key_here") {
     return null;
   }
-  return new Client({ auth: apiKey });
+  return new Client({ auth: apiKey, notionVersion: "2022-06-28" });
 }
 
-// --- ページネーション付きクエリ ---
+// --- ページネーション付きクエリ（notion.request で databases/{id}/query を直接呼び出し） ---
 async function queryAllPages(
   notion: Client,
-  dataSourceId: string,
+  databaseId: string,
   filter?: Record<string, unknown>
 ): Promise<any[]> {
+  if (!databaseId) return [];
+
   let allResults: any[] = [];
   let hasMore = true;
   let startCursor: string | undefined = undefined;
 
   while (hasMore) {
-    const response: any = await notion.dataSources.query({
-      data_source_id: dataSourceId,
-      filter: filter as any,
-      start_cursor: startCursor,
-      page_size: 100,
+    const body: Record<string, unknown> = { page_size: 100 };
+    if (filter) body.filter = filter;
+    if (startCursor) body.start_cursor = startCursor;
+
+    const response: any = await notion.request({
+      path: `databases/${databaseId}/query`,
+      method: "post",
+      body,
     });
     allResults = allResults.concat(response.results);
     hasMore = response.has_more;
@@ -103,7 +128,7 @@ export async function getContractCompanySummary(): Promise<CompanySummary> {
   if (!notion) return { total: 0, byStatus: {}, records: [] };
 
   try {
-    const results = await queryAllPages(notion, COMPANY_DS_ID);
+    const results = await queryAllPages(notion, getCompanyDbId());
     const byStatus: Record<string, number> = {};
     for (const status of COMPANY_STATUSES) byStatus[status] = 0;
     const records: CompanyRecord[] = [];
@@ -220,10 +245,10 @@ export async function getJobSummary(): Promise<JobSummary> {
   }
 
   try {
-    // 2つの DB を並列取得
+    // 2つの DB を並列取得（飲食DBが未設定の場合は空配列）
     const [igaiResults, shokuhinResults] = await Promise.all([
-      queryAllPages(notion, JOB_DS_ID),
-      queryAllPages(notion, JOB_SHOKUHIN_DS_ID),
+      queryAllPages(notion, getJobIgaiDbId()),
+      queryAllPages(notion, getJobShokuhinDbId()),
     ]);
 
     const shokuhinIgai = aggregateJobs(igaiResults);
@@ -281,7 +306,7 @@ export async function getAllApplications(): Promise<RawApplication[]> {
   if (!notion) return [];
 
   try {
-    const results = await queryAllPages(notion, APPLICATION_DS_ID);
+    const results = await queryAllPages(notion, getApplicationDbId());
     return results.map((page: any) => {
       const props = page.properties;
       const dateOf = (key: string) => props[key]?.date?.start ?? null;
@@ -350,7 +375,7 @@ export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
   if (!notion) return [];
 
   try {
-    const results = await queryAllPages(notion, SEEKER_DS_ID);
+    const results = await queryAllPages(notion, getSeekerDbId());
 
     return results.map((page: any) => {
       const props = page.properties;
@@ -359,8 +384,7 @@ export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
       const title = (key: string) =>
         props[key]?.title?.[0]?.text?.content ?? "";
       const ageProp = props["年齢"];
-      const ageNumber =
-        ageProp?.formula?.number ?? ageProp?.number ?? null;
+      const ageFormula = ageProp?.formula?.number ?? ageProp?.number ?? null;
       const ageManual = props["年齢（手入力）"]?.number ?? null;
 
       return {
@@ -387,7 +411,8 @@ export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
         hireDate: props["入社日"]?.date?.start ?? null,
         staff: txt("担当者"),
         prefecture: txt("居住都道府県"),
-        age: ageNumber ?? ageManual,
+        // 手入力の年齢を優先、なければformulaの計算値を使用
+        age: ageManual ?? ageFormula,
         currentSalary: props["現職年収"]?.number ?? null,
         source: props["流入経路"]?.select?.name ?? "",
         finalResult: props["最終結果"]?.select?.name ?? "",
