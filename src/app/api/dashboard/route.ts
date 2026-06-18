@@ -11,7 +11,7 @@ import {
 } from "@/lib/notion";
 import { processAllData, DashboardData } from "@/lib/process-data";
 
-export const revalidate = 86400;
+export const revalidate = 300;
 
 function emptyJobCategory() {
   return {
