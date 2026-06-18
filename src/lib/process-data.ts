@@ -649,19 +649,59 @@ export function processAllData(
   jobSummary: JobSummary,
   isConnected: boolean
 ): DashboardData {
-  // 応募DBのrecommendDateから求職者ごとの推薦社数を算出（Notionプロパティより正確）
-  const recsBySeekerIdFromApps = new Map<string, number>();
+  // 応募DBから求職者ごとの各指標を算出（Notionプロパティの更新漏れを回避）
+  interface AppDerivedMetrics {
+    recommendations: number;
+    interviewSettings: number;
+    interviewsConducted: number;
+    firstInterviewPass: number;
+    secondInterviewExecuted: number;
+    secondInterviewPass: number;
+    finalInterviewExecuted: number;
+    offers: number;
+    acceptances: number;
+    hires: number;
+  }
+  const appMetricsBySeeker = new Map<string, AppDerivedMetrics>();
+
   for (const app of applications) {
-    if (app.recommendDate) {
-      for (const seekerId of app.seekerIds) {
-        recsBySeekerIdFromApps.set(seekerId, (recsBySeekerIdFromApps.get(seekerId) ?? 0) + 1);
+    for (const seekerId of app.seekerIds) {
+      if (!appMetricsBySeeker.has(seekerId)) {
+        appMetricsBySeeker.set(seekerId, {
+          recommendations: 0, interviewSettings: 0, interviewsConducted: 0,
+          firstInterviewPass: 0, secondInterviewExecuted: 0, secondInterviewPass: 0,
+          finalInterviewExecuted: 0, offers: 0, acceptances: 0, hires: 0,
+        });
       }
+      const m = appMetricsBySeeker.get(seekerId)!;
+      if (app.recommendDate) m.recommendations++;
+      if (app.firstInterviewSetDate) m.interviewSettings++;
+      if (app.firstInterviewDate) m.interviewsConducted++;
+      if (app.secondInterviewDate) { m.firstInterviewPass++; m.secondInterviewExecuted++; }
+      if (app.finalInterviewDate) { m.secondInterviewPass++; m.finalInterviewExecuted++; }
+      if (app.offerDate) m.offers++;
+      if (app.acceptanceDate) m.acceptances++;
+      if (app.phase === "入社") m.hires++;
     }
   }
-  const enrichedSeekers = seekers.map(s => ({
-    ...s,
-    recommendations: recsBySeekerIdFromApps.get(s.id) ?? s.recommendations,
-  }));
+
+  const enrichedSeekers = seekers.map(s => {
+    const m = appMetricsBySeeker.get(s.id);
+    if (!m) return s;
+    return {
+      ...s,
+      recommendations: m.recommendations,
+      interviewSettings: m.interviewSettings,
+      interviewsConducted: m.interviewsConducted,
+      firstInterviewPass: m.firstInterviewPass,
+      secondInterviewExecuted: m.secondInterviewExecuted,
+      secondInterviewPass: m.secondInterviewPass,
+      finalInterviewExecuted: m.finalInterviewExecuted,
+      offers: m.offers,
+      acceptances: m.acceptances,
+      hires: m.hires,
+    };
+  });
 
   const monthlyMetrics = computeMonthlyMetrics(enrichedSeekers);
   const { staffList, staffMetrics } = computeStaffMetrics(enrichedSeekers);
