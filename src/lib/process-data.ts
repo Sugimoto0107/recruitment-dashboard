@@ -649,10 +649,24 @@ export function processAllData(
   jobSummary: JobSummary,
   isConnected: boolean
 ): DashboardData {
-  const monthlyMetrics = computeMonthlyMetrics(seekers);
-  const { staffList, staffMetrics } = computeStaffMetrics(seekers);
-  const { sourceList, sourceMetrics } = computeSourceMetrics(seekers);
-  const staffSourceMetrics = computeStaffSourceMetrics(seekers);
+  // 応募DBのrecommendDateから求職者ごとの推薦社数を算出（Notionプロパティより正確）
+  const recsBySeekerIdFromApps = new Map<string, number>();
+  for (const app of applications) {
+    if (app.recommendDate) {
+      for (const seekerId of app.seekerIds) {
+        recsBySeekerIdFromApps.set(seekerId, (recsBySeekerIdFromApps.get(seekerId) ?? 0) + 1);
+      }
+    }
+  }
+  const enrichedSeekers = seekers.map(s => ({
+    ...s,
+    recommendations: recsBySeekerIdFromApps.get(s.id) ?? s.recommendations,
+  }));
+
+  const monthlyMetrics = computeMonthlyMetrics(enrichedSeekers);
+  const { staffList, staffMetrics } = computeStaffMetrics(enrichedSeekers);
+  const { sourceList, sourceMetrics } = computeSourceMetrics(enrichedSeekers);
+  const staffSourceMetrics = computeStaffSourceMetrics(enrichedSeekers);
   const grandTotals = computeGrandTotals(monthlyMetrics);
   const averageDays = computeAverageDays(seekers);
   const staffAverageDays = computeStaffAverageDays(seekers);
@@ -663,10 +677,10 @@ export function processAllData(
   const applicationFunnel = computeApplicationFunnel(applications);
   const inProgress = computeInProgress(
     applications,
-    seekers,
+    enrichedSeekers,
     companySummary.records
   );
-  const jobSeekerSummaries = buildJobSeekerSummaries(seekers);
+  const jobSeekerSummaries = buildJobSeekerSummaries(enrichedSeekers);
 
   return {
     isConnected,
