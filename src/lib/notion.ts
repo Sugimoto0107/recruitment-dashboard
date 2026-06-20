@@ -163,6 +163,7 @@ export interface JobCategorySummary {
   total: number;
   byStatus: Record<string, number>;
   publishedByJobCode: Record<string, number>;
+  monthlyAcquisition: Record<string, number>;
 }
 
 export interface JobSummary {
@@ -170,6 +171,7 @@ export interface JobSummary {
   total: number;
   byStatus: Record<string, number>;
   publishedByJobCode: Record<string, number>;
+  monthlyAcquisition: Record<string, number>;
   // 飲食 / 飲食以外 のカテゴリ別
   shokuhinIgai: JobCategorySummary; // 飲食以外
   shokuhin: JobCategorySummary; // 飲食
@@ -178,13 +180,14 @@ export interface JobSummary {
 function emptyJobCategory(): JobCategorySummary {
   const byStatus: Record<string, number> = {};
   for (const status of JOB_STATUSES) byStatus[status] = 0;
-  return { total: 0, byStatus, publishedByJobCode: {} };
+  return { total: 0, byStatus, publishedByJobCode: {}, monthlyAcquisition: {} };
 }
 
 function aggregateJobs(results: any[]): JobCategorySummary {
   const byStatus: Record<string, number> = {};
   for (const status of JOB_STATUSES) byStatus[status] = 0;
   const publishedByJobCode: Record<string, number> = {};
+  const monthlyAcquisition: Record<string, number> = {};
 
   for (const page of results) {
     const status = page.properties?.["ステータス"]?.select?.name as
@@ -200,8 +203,14 @@ function aggregateJobs(results: any[]): JobCategorySummary {
       const codeKey = code || "未設定";
       publishedByJobCode[codeKey] = (publishedByJobCode[codeKey] ?? 0) + 1;
     }
+
+    const createdAt: string = page.created_time ?? "";
+    if (createdAt) {
+      const monthKey = createdAt.slice(0, 7);
+      monthlyAcquisition[monthKey] = (monthlyAcquisition[monthKey] ?? 0) + 1;
+    }
   }
-  return { total: results.length, byStatus, publishedByJobCode };
+  return { total: results.length, byStatus, publishedByJobCode, monthlyAcquisition };
 }
 
 function mergeJobCategories(
@@ -211,6 +220,7 @@ function mergeJobCategories(
   total: number;
   byStatus: Record<string, number>;
   publishedByJobCode: Record<string, number>;
+  monthlyAcquisition: Record<string, number>;
 } {
   const byStatus: Record<string, number> = {};
   for (const k of Object.keys(a.byStatus)) byStatus[k] = a.byStatus[k];
@@ -224,10 +234,15 @@ function mergeJobCategories(
     publishedByJobCode[k] =
       (publishedByJobCode[k] ?? 0) + b.publishedByJobCode[k];
 
+  const monthlyAcquisition: Record<string, number> = { ...a.monthlyAcquisition };
+  for (const k of Object.keys(b.monthlyAcquisition))
+    monthlyAcquisition[k] = (monthlyAcquisition[k] ?? 0) + b.monthlyAcquisition[k];
+
   return {
     total: a.total + b.total,
     byStatus,
     publishedByJobCode,
+    monthlyAcquisition,
   };
 }
 
@@ -238,6 +253,7 @@ export async function getJobSummary(): Promise<JobSummary> {
       total: 0,
       byStatus: {},
       publishedByJobCode: {},
+      monthlyAcquisition: {},
       shokuhinIgai: emptyJobCategory(),
       shokuhin: emptyJobCategory(),
     };
@@ -259,6 +275,7 @@ export async function getJobSummary(): Promise<JobSummary> {
       total: merged.total,
       byStatus: merged.byStatus,
       publishedByJobCode: merged.publishedByJobCode,
+      monthlyAcquisition: merged.monthlyAcquisition,
       shokuhinIgai,
       shokuhin,
     };
@@ -268,6 +285,7 @@ export async function getJobSummary(): Promise<JobSummary> {
       total: 0,
       byStatus: {},
       publishedByJobCode: {},
+      monthlyAcquisition: {},
       shokuhinIgai: emptyJobCategory(),
       shokuhin: emptyJobCategory(),
     };

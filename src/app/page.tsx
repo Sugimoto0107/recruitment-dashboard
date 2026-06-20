@@ -12,6 +12,7 @@ import type {
   InProgressItem,
   JobSeekerSummary,
 } from "@/lib/process-data";
+import type { RakudenSummary } from "@/lib/sheets";
 import {
   PieChart,
   Pie,
@@ -557,6 +558,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rakudenData, setRakudenData] = useState<RakudenSummary | null>(null);
 
   // 担当者 (single) / 流入経路 (multi) / 期間 (multi)
   // すべて併用可能
@@ -567,10 +569,17 @@ export default function Dashboard() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      const [res, rakudenRes] = await Promise.all([
+        fetch("/api/dashboard", { cache: "no-store" }),
+        fetch("/api/rakuden", { cache: "no-store" }),
+      ]);
       if (!res.ok) throw new Error("API error");
       const json: DashboardData = await res.json();
       setData(json);
+      if (rakudenRes.ok) {
+        const rj = await rakudenRes.json();
+        if (rj.rows?.length > 0) setRakudenData(rj);
+      }
       setError(null);
     } catch (e) {
       setError("データの取得に失敗しました");
@@ -621,33 +630,46 @@ export default function Dashboard() {
   }, [data]);
 
   const averageDays = useMemo((): AverageDays => {
-    if (!data) return { entryToInterview: null, entryToAcceptance: null };
+    const nullDays: AverageDays = { entryToInterview: null, entryToAcceptance: null, interviewToFirstRecommend: null, entryToOffer: null, entryToHire: null };
+    if (!data) return nullDays;
+
+    // 期間フィルターのみ有効な場合: 月別 raw データから集計
+    if (selectedMonths.length > 0 && selectedStaff === "全体" && selectedSources.length === 0) {
+      const t = { interviewSum: 0, interviewCount: 0, acceptanceSum: 0, acceptanceCount: 0, interviewToRecommendSum: 0, interviewToRecommendCount: 0, entryToOfferSum: 0, entryToOfferCount: 0, entryToHireSum: 0, entryToHireCount: 0 };
+      for (const month of selectedMonths) {
+        const m = data.monthlyAverageDaysRaw[month];
+        if (!m) continue;
+        t.interviewSum += m.interviewSum; t.interviewCount += m.interviewCount;
+        t.acceptanceSum += m.acceptanceSum; t.acceptanceCount += m.acceptanceCount;
+        t.interviewToRecommendSum += m.interviewToRecommendSum; t.interviewToRecommendCount += m.interviewToRecommendCount;
+        t.entryToOfferSum += m.entryToOfferSum; t.entryToOfferCount += m.entryToOfferCount;
+        t.entryToHireSum += m.entryToHireSum; t.entryToHireCount += m.entryToHireCount;
+      }
+      const avg = (sum: number, count: number) => count > 0 ? Math.round(sum / count * 10) / 10 : null;
+      return {
+        entryToInterview: avg(t.interviewSum, t.interviewCount),
+        entryToAcceptance: avg(t.acceptanceSum, t.acceptanceCount),
+        interviewToFirstRecommend: avg(t.interviewToRecommendSum, t.interviewToRecommendCount),
+        entryToOffer: avg(t.entryToOfferSum, t.entryToOfferCount),
+        entryToHire: avg(t.entryToHireSum, t.entryToHireCount),
+      };
+    }
+
     // 担当者と流入経路を併用している場合は全体平均にフォールバック
-    // (cross-filter では正確な平均を計算できないため)
     if (selectedStaff !== "全体" && selectedSources.length > 0) {
       return data.averageDays;
     }
     if (selectedSources.length === 1) {
-      return (
-        data.sourceAverageDays[selectedSources[0]] ?? {
-          entryToInterview: null,
-          entryToAcceptance: null,
-        }
-      );
+      return data.sourceAverageDays[selectedSources[0]] ?? nullDays;
     }
     if (selectedSources.length > 1) {
       return data.averageDays;
     }
     if (selectedStaff !== "全体") {
-      return (
-        data.staffAverageDays[selectedStaff] ?? {
-          entryToInterview: null,
-          entryToAcceptance: null,
-        }
-      );
+      return data.staffAverageDays[selectedStaff] ?? nullDays;
     }
     return data.averageDays;
-  }, [data, selectedStaff, selectedSources]);
+  }, [data, selectedStaff, selectedSources, selectedMonths]);
 
   function cpa(month: string): string {
     const cost = marketingCostMap[month] ?? 0;
@@ -809,6 +831,98 @@ export default function Dashboard() {
               </p>
             )}
           </div>
+
+          {/* 月別求人獲得推移 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              月別求人獲得件数（Notionへの登録日ベース）
+            </h3>
+            {data && Object.keys(data.jobSummary.monthlyAcquisition).length > 0 ? (() => {
+              const igai = data.jobSummary.shokuhinIgai.monthlyAcquisition;
+              const shokuhin = data.jobSummary.shokuhin.monthlyAcquisition;
+              const allMonths = Array.from(new Set([...Object.keys(igai), ...Object.keys(shokuhin)])).sort();
+              const chartData = allMonths.map((month) => ({
+                month,
+                飲食以外: igai[month] ?? 0,
+                飲食: shokuhin[month] ?? 0,
+              }));
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                    <Tooltip formatter={(v) => [`${v}件`]} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="飲食以外" stackId="a" fill="#3B82F6" />
+                    <Bar dataKey="飲食" stackId="a" fill="#10B981" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            })() : (
+              <p className="text-xs text-gray-400">データがありません。</p>
+            )}
+          </div>
+
+          {/* 担当者別架電リスト集計（東京社数タブ） */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">
+                担当者別架電集計（東京社数）
+              </h3>
+              {rakudenData && (
+                <span className="text-xs text-gray-400">
+                  {new Date(rakudenData.fetchedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} 時点
+                </span>
+              )}
+            </div>
+            {rakudenData ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-500 border-b border-gray-100">
+                      <th className="text-left py-2 pr-4 font-medium">担当者</th>
+                      <th className="text-right py-2 px-3 font-medium">リスト数</th>
+                      <th className="text-right py-2 px-3 font-medium">アポ数</th>
+                      <th className="text-right py-2 px-3 font-medium">アポ率</th>
+                      <th className="text-right py-2 px-3 font-medium">人ありきOK</th>
+                      <th className="text-right py-2 px-3 font-medium">人ありき率</th>
+                      <th className="text-right py-2 px-3 font-medium">合計</th>
+                      <th className="text-right py-2 pl-3 font-medium">合計率</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rakudenData.rows.map((r) => (
+                      <tr key={r.staff} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-2 pr-4 font-medium text-gray-800">{r.staff}</td>
+                        <td className="text-right py-2 px-3 tabular-nums text-gray-700">{fmt(r.listCount)}</td>
+                        <td className="text-right py-2 px-3 tabular-nums text-blue-600 font-medium">{fmt(r.apoCount)}</td>
+                        <td className="text-right py-2 px-3 tabular-nums text-gray-500">{r.apoRate}</td>
+                        <td className="text-right py-2 px-3 tabular-nums text-green-600 font-medium">{fmt(r.hitAriCount)}</td>
+                        <td className="text-right py-2 px-3 tabular-nums text-gray-500">{r.hitAriRate}</td>
+                        <td className="text-right py-2 px-3 tabular-nums text-purple-600 font-bold">{fmt(r.totalCount)}</td>
+                        <td className="text-right py-2 pl-3 tabular-nums text-gray-500">{r.totalRate}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                      <td className="py-2 pr-4 text-gray-800">合計</td>
+                      <td className="text-right py-2 px-3 tabular-nums">{fmt(rakudenData.total.listCount)}</td>
+                      <td className="text-right py-2 px-3 tabular-nums text-blue-600">{fmt(rakudenData.total.apoCount)}</td>
+                      <td className="text-right py-2 px-3 tabular-nums text-gray-600">{rakudenData.total.apoRate}</td>
+                      <td className="text-right py-2 px-3 tabular-nums text-green-600">{fmt(rakudenData.total.hitAriCount)}</td>
+                      <td className="text-right py-2 px-3 tabular-nums text-gray-600">{rakudenData.total.hitAriRate}</td>
+                      <td className="text-right py-2 px-3 tabular-nums text-purple-600">{fmt(rakudenData.total.totalCount)}</td>
+                      <td className="text-right py-2 pl-3 tabular-nums text-gray-600">{rakudenData.total.totalRate}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">
+                GOOGLE_SERVICE_ACCOUNT_JSON を Vercel 環境変数に設定すると、東京社数タブの担当者別集計がここに表示されます。
+              </p>
+            )}
+          </div>
         </section>
 
         {/* ================= 応募ファネル ================= */}
@@ -868,23 +982,30 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
             <KPICard
               title="エントリー → 面談実施"
-              value={
-                averageDays.entryToInterview !== null
-                  ? `${averageDays.entryToInterview}日`
-                  : "-"
-              }
+              value={averageDays.entryToInterview !== null ? `${averageDays.entryToInterview}日` : "-"}
+              sub="平均所要日数"
+            />
+            <KPICard
+              title="面談実施 → 推薦"
+              value={averageDays.interviewToFirstRecommend !== null ? `${averageDays.interviewToFirstRecommend}日` : "-"}
+              sub="平均所要日数"
+            />
+            <KPICard
+              title="エントリー → 内定"
+              value={averageDays.entryToOffer !== null ? `${averageDays.entryToOffer}日` : "-"}
               sub="平均所要日数"
             />
             <KPICard
               title="エントリー → 内定承諾"
-              value={
-                averageDays.entryToAcceptance !== null
-                  ? `${averageDays.entryToAcceptance}日`
-                  : "-"
-              }
+              value={averageDays.entryToAcceptance !== null ? `${averageDays.entryToAcceptance}日` : "-"}
+              sub="平均所要日数"
+            />
+            <KPICard
+              title="エントリー → 入社"
+              value={averageDays.entryToHire !== null ? `${averageDays.entryToHire}日` : "-"}
               sub="平均所要日数"
             />
           </div>

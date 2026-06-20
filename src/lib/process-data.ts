@@ -39,6 +39,18 @@ export interface ProfileDistribution {
 export interface AverageDays {
   entryToInterview: number | null;
   entryToAcceptance: number | null;
+  interviewToFirstRecommend: number | null;
+  entryToOffer: number | null;
+  entryToHire: number | null;
+}
+
+// --- 月別平均日数の集計元データ（月フィルター用）---
+export interface AverageDaysRaw {
+  interviewSum: number; interviewCount: number;
+  acceptanceSum: number; acceptanceCount: number;
+  interviewToRecommendSum: number; interviewToRecommendCount: number;
+  entryToOfferSum: number; entryToOfferCount: number;
+  entryToHireSum: number; entryToHireCount: number;
 }
 
 // --- 応募ファネル指標 ---
@@ -119,6 +131,7 @@ export interface DashboardData {
   averageDays: AverageDays;
   staffAverageDays: Record<string, AverageDays>;
   sourceAverageDays: Record<string, AverageDays>;
+  monthlyAverageDaysRaw: Record<string, AverageDaysRaw>;
   // プロフィール分析
   prefectureData: ProfileDistribution[];
   ageGroupData: ProfileDistribution[];
@@ -244,56 +257,141 @@ export function computeGrandTotals(
   return totals;
 }
 
-export function computeAverageDays(seekers: RawJobSeeker[]): AverageDays {
+// 応募データから求職者ごとの最早日付を構築
+function buildSeekerAppDates(apps: RawApplication[]): Map<string, {
+  firstRecommendDate: string | null;
+  earliestOfferDate: string | null;
+  earliestAcceptanceDate: string | null;
+}> {
+  const map = new Map<string, { firstRecommendDate: string | null; earliestOfferDate: string | null; earliestAcceptanceDate: string | null }>();
+  for (const app of apps) {
+    for (const seekerId of app.seekerIds) {
+      if (!map.has(seekerId)) {
+        map.set(seekerId, { firstRecommendDate: null, earliestOfferDate: null, earliestAcceptanceDate: null });
+      }
+      const d = map.get(seekerId)!;
+      if (app.recommendDate && (!d.firstRecommendDate || app.recommendDate < d.firstRecommendDate)) {
+        d.firstRecommendDate = app.recommendDate;
+      }
+      if (app.offerDate && (!d.earliestOfferDate || app.offerDate < d.earliestOfferDate)) {
+        d.earliestOfferDate = app.offerDate;
+      }
+      if (app.acceptanceDate && (!d.earliestAcceptanceDate || app.acceptanceDate < d.earliestAcceptanceDate)) {
+        d.earliestAcceptanceDate = app.acceptanceDate;
+      }
+    }
+  }
+  return map;
+}
+
+const nullAvgDays = (): AverageDays => ({
+  entryToInterview: null, entryToAcceptance: null,
+  interviewToFirstRecommend: null, entryToOffer: null, entryToHire: null,
+});
+
+export function computeAverageDays(seekers: RawJobSeeker[], applications: RawApplication[]): AverageDays {
+  const appDates = buildSeekerAppDates(applications);
   const interviewDays: number[] = [];
+  const acceptanceDays: number[] = [];
+  const interviewToRecommendDays: number[] = [];
+  const entryToOfferDays: number[] = [];
+  const entryToHireDays: number[] = [];
+
   for (const s of seekers) {
+    const d = appDates.get(s.id);
     if (s.entryDate && s.interviewDate && s.interviewDone) {
       interviewDays.push(daysBetween(s.entryDate, s.interviewDate));
     }
-  }
-
-  const acceptanceDays: number[] = [];
-  for (const s of seekers) {
-    if (s.entryDate && s.acceptanceDate && s.acceptances > 0) {
-      acceptanceDays.push(daysBetween(s.entryDate, s.acceptanceDate));
+    if (s.entryDate && d?.earliestAcceptanceDate) {
+      acceptanceDays.push(daysBetween(s.entryDate, d.earliestAcceptanceDate));
+    }
+    if (s.interviewDate && s.interviewDone && d?.firstRecommendDate) {
+      interviewToRecommendDays.push(daysBetween(s.interviewDate, d.firstRecommendDate));
+    }
+    if (s.entryDate && d?.earliestOfferDate) {
+      entryToOfferDays.push(daysBetween(s.entryDate, d.earliestOfferDate));
+    }
+    if (s.entryDate && s.hireDate) {
+      entryToHireDays.push(daysBetween(s.entryDate, s.hireDate));
     }
   }
 
+  const avg = (arr: number[]) =>
+    arr.length > 0 ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null;
+
   return {
-    entryToInterview:
-      interviewDays.length > 0
-        ? Math.round(
-            (interviewDays.reduce((a, b) => a + b, 0) /
-              interviewDays.length) *
-              10
-          ) / 10
-        : null,
-    entryToAcceptance:
-      acceptanceDays.length > 0
-        ? Math.round(
-            (acceptanceDays.reduce((a, b) => a + b, 0) /
-              acceptanceDays.length) *
-              10
-          ) / 10
-        : null,
+    entryToInterview: avg(interviewDays),
+    entryToAcceptance: avg(acceptanceDays),
+    interviewToFirstRecommend: avg(interviewToRecommendDays),
+    entryToOffer: avg(entryToOfferDays),
+    entryToHire: avg(entryToHireDays),
   };
 }
 
+export function computeMonthlyAverageDaysRaw(
+  seekers: RawJobSeeker[],
+  applications: RawApplication[]
+): Record<string, AverageDaysRaw> {
+  const appDates = buildSeekerAppDates(applications);
+  const result: Record<string, AverageDaysRaw> = {};
+
+  const getOrCreate = (month: string): AverageDaysRaw => {
+    if (!result[month]) {
+      result[month] = {
+        interviewSum: 0, interviewCount: 0,
+        acceptanceSum: 0, acceptanceCount: 0,
+        interviewToRecommendSum: 0, interviewToRecommendCount: 0,
+        entryToOfferSum: 0, entryToOfferCount: 0,
+        entryToHireSum: 0, entryToHireCount: 0,
+      };
+    }
+    return result[month];
+  };
+
+  for (const s of seekers) {
+    if (!s.entryDate) continue;
+    const month = toMonthKey(s.entryDate);
+    const raw = getOrCreate(month);
+    const d = appDates.get(s.id);
+
+    if (s.interviewDate && s.interviewDone) {
+      raw.interviewSum += daysBetween(s.entryDate, s.interviewDate);
+      raw.interviewCount++;
+    }
+    if (d?.earliestAcceptanceDate) {
+      raw.acceptanceSum += daysBetween(s.entryDate, d.earliestAcceptanceDate);
+      raw.acceptanceCount++;
+    }
+    if (s.interviewDate && s.interviewDone && d?.firstRecommendDate) {
+      raw.interviewToRecommendSum += daysBetween(s.interviewDate, d.firstRecommendDate);
+      raw.interviewToRecommendCount++;
+    }
+    if (d?.earliestOfferDate) {
+      raw.entryToOfferSum += daysBetween(s.entryDate, d.earliestOfferDate);
+      raw.entryToOfferCount++;
+    }
+    if (s.hireDate) {
+      raw.entryToHireSum += daysBetween(s.entryDate, s.hireDate);
+      raw.entryToHireCount++;
+    }
+  }
+
+  return result;
+}
+
 export function computeStaffAverageDays(
-  seekers: RawJobSeeker[]
+  seekers: RawJobSeeker[],
+  applications: RawApplication[]
 ): Record<string, AverageDays> {
   const staffGroups = new Map<string, RawJobSeeker[]>();
   for (const s of seekers) {
     const staff = s.staff || "未設定";
-    if (!staffGroups.has(staff)) {
-      staffGroups.set(staff, []);
-    }
+    if (!staffGroups.has(staff)) staffGroups.set(staff, []);
     staffGroups.get(staff)!.push(s);
   }
-
   const result: Record<string, AverageDays> = {};
   for (const [staff, group] of staffGroups) {
-    result[staff] = computeAverageDays(group);
+    result[staff] = computeAverageDays(group, applications);
   }
   return result;
 }
@@ -323,7 +421,8 @@ export function computeSourceMetrics(seekers: RawJobSeeker[]): {
 }
 
 export function computeSourceAverageDays(
-  seekers: RawJobSeeker[]
+  seekers: RawJobSeeker[],
+  applications: RawApplication[]
 ): Record<string, AverageDays> {
   const groups = new Map<string, RawJobSeeker[]>();
   for (const s of seekers) {
@@ -333,7 +432,7 @@ export function computeSourceAverageDays(
   }
   const result: Record<string, AverageDays> = {};
   for (const [src, group] of groups) {
-    result[src] = computeAverageDays(group);
+    result[src] = computeAverageDays(group, applications);
   }
   return result;
 }
@@ -708,9 +807,10 @@ export function processAllData(
   const { sourceList, sourceMetrics } = computeSourceMetrics(enrichedSeekers);
   const staffSourceMetrics = computeStaffSourceMetrics(enrichedSeekers);
   const grandTotals = computeGrandTotals(monthlyMetrics);
-  const averageDays = computeAverageDays(seekers);
-  const staffAverageDays = computeStaffAverageDays(seekers);
-  const sourceAverageDays = computeSourceAverageDays(seekers);
+  const averageDays = computeAverageDays(seekers, applications);
+  const staffAverageDays = computeStaffAverageDays(seekers, applications);
+  const sourceAverageDays = computeSourceAverageDays(seekers, applications);
+  const monthlyAverageDaysRaw = computeMonthlyAverageDaysRaw(seekers, applications);
   const prefectureData = computePrefectureDistribution(seekers);
   const ageGroupData = computeAgeGroupDistribution(seekers);
   const salaryRangeData = computeSalaryDistribution(seekers);
@@ -739,6 +839,7 @@ export function processAllData(
     averageDays,
     staffAverageDays,
     sourceAverageDays,
+    monthlyAverageDaysRaw,
     prefectureData,
     ageGroupData,
     salaryRangeData,

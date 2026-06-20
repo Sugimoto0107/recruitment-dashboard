@@ -18,6 +18,7 @@ function emptyJobCategory() {
     total: 0,
     byStatus: {},
     publishedByJobCode: {},
+    monthlyAcquisition: {},
   };
 }
 
@@ -30,6 +31,7 @@ function emptyData(): DashboardData {
       total: 0,
       byStatus: {},
       publishedByJobCode: {},
+      monthlyAcquisition: {},
       shokuhinIgai: emptyJobCategory(),
       shokuhin: emptyJobCategory(),
     },
@@ -55,9 +57,10 @@ function emptyData(): DashboardData {
       内定承諾数: 0,
       入社数: 0,
     },
-    averageDays: { entryToInterview: null, entryToAcceptance: null },
+    averageDays: { entryToInterview: null, entryToAcceptance: null, interviewToFirstRecommend: null, entryToOffer: null, entryToHire: null },
     staffAverageDays: {},
     sourceAverageDays: {},
+    monthlyAverageDaysRaw: {},
     prefectureData: [],
     ageGroupData: [],
     salaryRangeData: [],
