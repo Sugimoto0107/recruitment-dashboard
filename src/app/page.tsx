@@ -854,8 +854,8 @@ export default function Dashboard() {
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
                     <Tooltip formatter={(v) => [`${v}件`]} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="飲食以外" stackId="a" fill="#3B82F6" />
-                    <Bar dataKey="飲食" stackId="a" fill="#10B981" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="飲食以外" fill="#3B82F6" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="飲食" fill="#10B981" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               );
@@ -864,65 +864,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* 担当者別架電リスト集計（東京社数タブ） */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700">
-                担当者別架電集計（東京社数）
-              </h3>
-              {rakudenData && (
-                <span className="text-xs text-gray-400">
-                  {new Date(rakudenData.fetchedAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} 時点
-                </span>
-              )}
-            </div>
-            {rakudenData ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-gray-500 border-b border-gray-100">
-                      <th className="text-left py-2 pr-4 font-medium">担当者</th>
-                      <th className="text-right py-2 px-3 font-medium">リスト数</th>
-                      <th className="text-right py-2 px-3 font-medium">アポ数</th>
-                      <th className="text-right py-2 px-3 font-medium">アポ率</th>
-                      <th className="text-right py-2 px-3 font-medium">人ありきOK</th>
-                      <th className="text-right py-2 px-3 font-medium">人ありき率</th>
-                      <th className="text-right py-2 px-3 font-medium">合計</th>
-                      <th className="text-right py-2 pl-3 font-medium">合計率</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rakudenData.rows.map((r) => (
-                      <tr key={r.staff} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="py-2 pr-4 font-medium text-gray-800">{r.staff}</td>
-                        <td className="text-right py-2 px-3 tabular-nums text-gray-700">{fmt(r.listCount)}</td>
-                        <td className="text-right py-2 px-3 tabular-nums text-blue-600 font-medium">{fmt(r.apoCount)}</td>
-                        <td className="text-right py-2 px-3 tabular-nums text-gray-500">{r.apoRate}</td>
-                        <td className="text-right py-2 px-3 tabular-nums text-green-600 font-medium">{fmt(r.hitAriCount)}</td>
-                        <td className="text-right py-2 px-3 tabular-nums text-gray-500">{r.hitAriRate}</td>
-                        <td className="text-right py-2 px-3 tabular-nums text-purple-600 font-bold">{fmt(r.totalCount)}</td>
-                        <td className="text-right py-2 pl-3 tabular-nums text-gray-500">{r.totalRate}</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
-                      <td className="py-2 pr-4 text-gray-800">合計</td>
-                      <td className="text-right py-2 px-3 tabular-nums">{fmt(rakudenData.total.listCount)}</td>
-                      <td className="text-right py-2 px-3 tabular-nums text-blue-600">{fmt(rakudenData.total.apoCount)}</td>
-                      <td className="text-right py-2 px-3 tabular-nums text-gray-600">{rakudenData.total.apoRate}</td>
-                      <td className="text-right py-2 px-3 tabular-nums text-green-600">{fmt(rakudenData.total.hitAriCount)}</td>
-                      <td className="text-right py-2 px-3 tabular-nums text-gray-600">{rakudenData.total.hitAriRate}</td>
-                      <td className="text-right py-2 px-3 tabular-nums text-purple-600">{fmt(rakudenData.total.totalCount)}</td>
-                      <td className="text-right py-2 pl-3 tabular-nums text-gray-600">{rakudenData.total.totalRate}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400">
-                GOOGLE_SERVICE_ACCOUNT_JSON を Vercel 環境変数に設定すると、東京社数タブの担当者別集計がここに表示されます。
-              </p>
-            )}
-          </div>
         </section>
 
         {/* ================= 応募ファネル ================= */}
