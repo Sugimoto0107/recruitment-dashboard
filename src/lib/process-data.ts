@@ -95,6 +95,11 @@ export interface JobSeekerSummary {
   entryDate: string | null;
   interviewDate: string | null;
   finalResult: string;
+  source: string;
+  isFood: boolean;
+  gender: string;
+  education: string;
+  jobChangeCount: number | null;
   recommendations: number;
   interviewSettings: number;
   interviewsConducted: number;
@@ -140,10 +145,12 @@ export interface DashboardData {
   staffAverageDays: Record<string, AverageDays>;
   sourceAverageDays: Record<string, AverageDays>;
   monthlyAverageDaysRaw: Record<string, AverageDaysRaw>;
-  // プロフィール分析
+  // プロフィール分析（全体 + 飲食別）
   prefectureData: ProfileDistribution[];
   ageGroupData: ProfileDistribution[];
   salaryRangeData: ProfileDistribution[];
+  profileNonFood: ProfileGroup;
+  profileFood: ProfileGroup;
   // 応募ファネル
   applicationFunnel: ApplicationFunnel;
   inProgress: InProgressBuckets;
@@ -583,6 +590,94 @@ export function computeSalaryDistribution(
     .filter((d) => d.count > 0);
 }
 
+export function computeGenderDistribution(
+  seekers: RawJobSeeker[]
+): ProfileDistribution[] {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const s of seekers) {
+    if (!s.entryDate || !s.gender) continue;
+    counts.set(s.gender, (counts.get(s.gender) ?? 0) + 1);
+    total++;
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({
+      label,
+      count,
+      percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+export function computeEducationDistribution(
+  seekers: RawJobSeeker[]
+): ProfileDistribution[] {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const s of seekers) {
+    if (!s.entryDate || !s.education) continue;
+    counts.set(s.education, (counts.get(s.education) ?? 0) + 1);
+    total++;
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({
+      label,
+      count,
+      percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+export function computeJobChangeDistribution(
+  seekers: RawJobSeeker[]
+): ProfileDistribution[] {
+  const ranges: Record<string, number> = {
+    "0回": 0,
+    "1〜2回": 0,
+    "3〜5回": 0,
+    "6回以上": 0,
+  };
+  let total = 0;
+  for (const s of seekers) {
+    if (!s.entryDate || s.jobChangeCount === null) continue;
+    total++;
+    if (s.jobChangeCount === 0) ranges["0回"]++;
+    else if (s.jobChangeCount <= 2) ranges["1〜2回"]++;
+    else if (s.jobChangeCount <= 5) ranges["3〜5回"]++;
+    else ranges["6回以上"]++;
+  }
+  const order = ["0回", "1〜2回", "3〜5回", "6回以上"];
+  return order
+    .map((label) => ({
+      label,
+      count: ranges[label],
+      percentage: total > 0 ? Math.round((ranges[label] / total) * 1000) / 10 : 0,
+    }))
+    .filter((d) => d.count > 0);
+}
+
+export interface ProfileGroup {
+  count: number;
+  prefectureData: ProfileDistribution[];
+  ageGroupData: ProfileDistribution[];
+  salaryRangeData: ProfileDistribution[];
+  genderData: ProfileDistribution[];
+  educationData: ProfileDistribution[];
+  jobChangeData: ProfileDistribution[];
+}
+
+function buildProfileGroup(ss: RawJobSeeker[]): ProfileGroup {
+  return {
+    count: ss.filter((s) => !!s.entryDate).length,
+    prefectureData: computePrefectureDistribution(ss),
+    ageGroupData: computeAgeGroupDistribution(ss),
+    salaryRangeData: computeSalaryDistribution(ss),
+    genderData: computeGenderDistribution(ss),
+    educationData: computeEducationDistribution(ss),
+    jobChangeData: computeJobChangeDistribution(ss),
+  };
+}
+
 // =============================================================
 // 応募ファネル
 // =============================================================
@@ -728,6 +823,11 @@ export function buildJobSeekerSummaries(
       entryDate: s.entryDate,
       interviewDate: s.interviewDate,
       finalResult: s.finalResult,
+      source: s.source,
+      isFood: s.isFood,
+      gender: s.gender,
+      education: s.education,
+      jobChangeCount: s.jobChangeCount,
       recommendations: s.recommendations,
       interviewSettings: s.interviewSettings,
       interviewsConducted: s.interviewsConducted,
@@ -880,6 +980,8 @@ export function processAllData(
   const prefectureData = computePrefectureDistribution(seekers);
   const ageGroupData = computeAgeGroupDistribution(seekers);
   const salaryRangeData = computeSalaryDistribution(seekers);
+  const profileNonFood = buildProfileGroup(seekers.filter((s) => !s.isFood));
+  const profileFood = buildProfileGroup(seekers.filter((s) => s.isFood));
   const applicationFunnel = computeApplicationFunnel(applications);
   const inProgress = computeInProgress(
     applications,
@@ -910,6 +1012,8 @@ export function processAllData(
     prefectureData,
     ageGroupData,
     salaryRangeData,
+    profileNonFood,
+    profileFood,
     applicationFunnel,
     inProgress,
     jobSeekerSummaries,

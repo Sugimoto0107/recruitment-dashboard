@@ -387,6 +387,10 @@ export interface RawJobSeeker {
   source: string;
   finalResult: string;
   speakingRatio: number | null;
+  isFood: boolean;
+  gender: string;
+  education: string;
+  jobChangeCount: number | null;
 }
 
 export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
@@ -436,6 +440,10 @@ export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
         source: props["流入経路"]?.select?.name ?? "",
         finalResult: props["最終結果"]?.select?.name ?? "",
         speakingRatio: props["発話比率CA"]?.number ?? null,
+        isFood: props["飲食"]?.checkbox ?? false,
+        gender: props["性別"]?.select?.name ?? "",
+        education: props["最終学歴"]?.select?.name ?? "",
+        jobChangeCount: props["転職回数"]?.number ?? null,
       };
     });
   } catch (error) {

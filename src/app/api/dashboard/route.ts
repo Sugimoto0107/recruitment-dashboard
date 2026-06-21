@@ -64,6 +64,8 @@ function emptyData(): DashboardData {
     prefectureData: [],
     ageGroupData: [],
     salaryRangeData: [],
+    profileNonFood: { count: 0, prefectureData: [], ageGroupData: [], salaryRangeData: [], genderData: [], educationData: [], jobChangeData: [] },
+    profileFood: { count: 0, prefectureData: [], ageGroupData: [], salaryRangeData: [], genderData: [], educationData: [], jobChangeData: [] },
     applicationFunnel: {
       totalApplications: 0,
       byPhase: {},

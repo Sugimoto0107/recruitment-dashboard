@@ -7,6 +7,7 @@ import type {
   DashboardData,
   MonthlyCAMetrics,
   ProfileDistribution,
+  ProfileGroup,
   AverageDays,
   InProgressBuckets,
   InProgressItem,
@@ -415,21 +416,100 @@ function MultiSelectPills({
   );
 }
 
+// --- 求職者テーブル（共通ヘッダー・行） ---
+const SEEKER_COL_SPAN = 21;
+
+function SeekerTableHeader() {
+  return (
+    <tr className="bg-gray-50 text-gray-600 text-left">
+      <th className="px-3 py-2 font-medium whitespace-nowrap">氏名</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">流入経路</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">性別</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">最終学歴</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">転職回数</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">担当者</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">面談日</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">エントリー日</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">最終結果</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">推薦</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">面接設定</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">面接実施</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">1次通過</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">2次実施</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">2次通過</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">最終実施</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">内定</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">承諾</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">承諾日</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">入社</th>
+      <th className="px-3 py-2 font-medium whitespace-nowrap">入社日</th>
+    </tr>
+  );
+}
+
+function SeekerTableRows({ rows, label }: { rows: JobSeekerSummary[]; label: string }) {
+  if (rows.length === 0) {
+    return (
+      <tr>
+        <td colSpan={SEEKER_COL_SPAN} className="px-4 py-4 text-center text-gray-400">
+          対象データがありません
+        </td>
+      </tr>
+    );
+  }
+  return (
+    <>
+      <tr>
+        <td colSpan={SEEKER_COL_SPAN} className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-semibold border-t border-blue-100">
+          {label}（{fmt(rows.length)}件）
+        </td>
+      </tr>
+      {rows.map((r) => (
+        <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
+          <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{r.name}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.source || "-"}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.gender || "-"}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.education || "-"}</td>
+          <td className="px-3 py-2 text-right tabular-nums text-gray-600">{r.jobChangeCount !== null ? fmt(r.jobChangeCount) : "-"}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.staff || "-"}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">{fmtDate(r.interviewDate)}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.entryDate)}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.finalResult || "-"}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.recommendations)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewSettings)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewsConducted)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.firstInterviewPass)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.secondInterviewExecuted)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.secondInterviewPass)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.finalInterviewExecuted)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.offers)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.acceptances)}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.acceptanceDate)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hires)}</td>
+          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.hireDate)}</td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
 // --- 求職者個別テーブル ---
 function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
   const [filter, setFilter] = useState("");
-  const filtered = useMemo(() => {
+  const { foodRows, nonFoodRows, totalFiltered } = useMemo(() => {
     const q = filter.trim();
-    if (!q) {
-      return rows.filter((r) => !r.finalResult);
-    }
-    return rows.filter(
-      (r) =>
-        r.name.includes(q) ||
-        r.candidateNo.includes(q) ||
-        r.staff.includes(q) ||
-        r.finalResult.includes(q)
-    );
+    const base = q
+      ? rows.filter(
+          (r) =>
+            r.name.includes(q) ||
+            r.source.includes(q) ||
+            r.staff.includes(q) ||
+            r.finalResult.includes(q)
+        )
+      : rows.filter((r) => !r.finalResult);
+    const foodRows = base.filter((r) => r.isFood);
+    const nonFoodRows = base.filter((r) => !r.isFood);
+    return { foodRows, nonFoodRows, totalFiltered: base.length };
   }, [rows, filter]);
 
   return (
@@ -438,7 +518,7 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
         <div className="flex items-center gap-3 flex-wrap">
           <input
             type="text"
-            placeholder="氏名・候補者NO・担当者で絞り込み"
+            placeholder="氏名・流入経路・担当者で絞り込み"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 w-72 max-w-full"
@@ -448,66 +528,55 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
           </span>
         </div>
         <span className="text-xs text-gray-500">
-          {fmt(filtered.length)} / {fmt(rows.length)} 件
+          {fmt(totalFiltered)} / {fmt(rows.length)} 件
         </span>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="bg-gray-50 text-gray-600 text-left">
-              <th className="px-3 py-2 font-medium whitespace-nowrap">氏名</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">候補者NO</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">担当者</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">面談日</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">エントリー日</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">最終結果</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">推薦</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">面接設定</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">面接実施</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">1次通過</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">2次実施</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">2次通過</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">最終実施</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">内定</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">承諾</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">承諾日</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap text-right">入社</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">入社日</th>
-            </tr>
+            <SeekerTableHeader />
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={18} className="px-4 py-8 text-center text-gray-400">
-                  対象データがありません
-                </td>
-              </tr>
-            ) : (
-              filtered.map((r) => (
-                <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{r.name}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.candidateNo || "-"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.staff || "-"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">{fmtDate(r.interviewDate)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.entryDate)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.finalResult || "-"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.recommendations)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewSettings)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewsConducted)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.firstInterviewPass)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.secondInterviewExecuted)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.secondInterviewPass)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.finalInterviewExecuted)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.offers)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.acceptances)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.acceptanceDate)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hires)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.hireDate)}</td>
-                </tr>
-              ))
-            )}
+            <SeekerTableRows rows={nonFoodRows} label="飲食以外" />
+            <SeekerTableRows rows={foodRows} label="飲食" />
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function ProfileGroupSection({
+  group,
+  label,
+}: {
+  group: ProfileGroup | undefined;
+  label: string;
+}) {
+  const g = group ?? {
+    count: 0,
+    prefectureData: [],
+    ageGroupData: [],
+    salaryRangeData: [],
+    genderData: [],
+    educationData: [],
+    jobChangeData: [],
+  };
+  return (
+    <div>
+      <p className="text-sm font-semibold text-gray-700 mb-2">
+        {label}
+        <span className="ml-2 text-xs font-normal text-gray-400">
+          {fmt(g.count)} 件
+        </span>
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <DonutChart data={g.prefectureData} title="現住所の都道府県別" />
+        <DonutChart data={g.ageGroupData} title="年代別構成比" />
+        <DonutChart data={g.salaryRangeData} title="現年収帯別構成比" />
+        <DonutChart data={g.genderData} title="性別" />
+        <DonutChart data={g.educationData} title="最終学歴" />
+        <DonutChart data={g.jobChangeData} title="転職回数" />
       </div>
     </div>
   );
@@ -1178,14 +1247,13 @@ export default function Dashboard() {
 
         {/* ================= プロフィール分析 ================= */}
         <section>
-          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
+          <h2 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span className="w-1.5 h-5 bg-purple-500 rounded-full inline-block" />
             エントリー者プロフィール
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <DonutChart data={data?.prefectureData ?? []} title="現住所の都道府県別" />
-            <DonutChart data={data?.ageGroupData ?? []} title="年代別構成比" />
-            <DonutChart data={data?.salaryRangeData ?? []} title="現年収帯別構成比" />
+          <ProfileGroupSection group={data?.profileNonFood} label="飲食以外" />
+          <div className="mt-6">
+            <ProfileGroupSection group={data?.profileFood} label="飲食" />
           </div>
         </section>
 
