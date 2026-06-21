@@ -386,6 +386,7 @@ export interface RawJobSeeker {
   currentSalary: number | null;
   source: string;
   finalResult: string;
+  speakingRatio: number | null;
 }
 
 export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
@@ -434,6 +435,7 @@ export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
         currentSalary: props["現職年収"]?.number ?? null,
         source: props["流入経路"]?.select?.name ?? "",
         finalResult: props["最終結果"]?.select?.name ?? "",
+        speakingRatio: props["発話比率CA"]?.number ?? null,
       };
     });
   } catch (error) {

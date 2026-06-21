@@ -86,6 +86,7 @@ function emptyData(): DashboardData {
       内定: [],
     },
     jobSeekerSummaries: [],
+    monthlySpeakingRatio: { months: [], staffList: [], byStaff: {}, overall: {} },
   };
 }
 

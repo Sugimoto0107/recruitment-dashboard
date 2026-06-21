@@ -11,6 +11,7 @@ import type {
   InProgressBuckets,
   InProgressItem,
   JobSeekerSummary,
+  MonthlySpeakingRatioData,
 } from "@/lib/process-data";
 import type { RakudenSummary } from "@/lib/sheets";
 import {
@@ -805,33 +806,6 @@ export default function Dashboard() {
               ))}
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              公開中求人の職種コード別内訳（飲食以外＋飲食 合算）
-            </h3>
-            {data && Object.keys(data.jobSummary.publishedByJobCode).length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                {Object.entries(data.jobSummary.publishedByJobCode)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([code, count]) => (
-                    <div
-                      key={code}
-                      className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
-                    >
-                      <span className="text-gray-700 truncate">{code}</span>
-                      <span className="tabular-nums font-semibold text-gray-900 ml-2">
-                        {fmt(count)}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400">
-                職種コードのデータがありません（Notion 側に「職種コード」を入力すると表示されます）。
-              </p>
-            )}
-          </div>
-
           {/* 月別求人獲得推移 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
@@ -861,6 +835,33 @@ export default function Dashboard() {
               );
             })() : (
               <p className="text-xs text-gray-400">データがありません。</p>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              公開中求人の職種コード別内訳（飲食以外＋飲食 合算）
+            </h3>
+            {data && Object.keys(data.jobSummary.publishedByJobCode).length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                {Object.entries(data.jobSummary.publishedByJobCode)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([code, count]) => (
+                    <div
+                      key={code}
+                      className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
+                    >
+                      <span className="text-gray-700 truncate">{code}</span>
+                      <span className="tabular-nums font-semibold text-gray-900 ml-2">
+                        {fmt(count)}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">
+                職種コードのデータがありません（Notion 側に「職種コード」を入力すると表示されます）。
+              </p>
             )}
           </div>
 
@@ -1095,6 +1096,73 @@ export default function Dashboard() {
                   <Bar dataKey="入社数" fill="#EF4444" />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {data?.monthlySpeakingRatio && data.monthlySpeakingRatio.months.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                発話比率CA 月別平均（担当者別）
+              </h3>
+              <p className="text-[10px] text-gray-400 mb-3">
+                CA が面談中に発言した文字数の割合の平均。面談実施日の月で集計。
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-600 text-left">
+                      <th className="px-2 py-1.5 font-medium">月</th>
+                      {data.monthlySpeakingRatio.staffList.map((staff) => (
+                        <th key={staff} className="px-2 py-1.5 font-medium text-right">
+                          {staff}
+                        </th>
+                      ))}
+                      <th className="px-2 py-1.5 font-medium text-right text-gray-800">全体</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.monthlySpeakingRatio.months.map((month) => {
+                      const overall = data.monthlySpeakingRatio.overall[month];
+                      return (
+                        <tr key={month} className="border-t border-gray-100 hover:bg-gray-50">
+                          <td className="px-2 py-1.5 font-medium text-gray-800">
+                            {month.slice(2)}
+                          </td>
+                          {data.monthlySpeakingRatio.staffList.map((staff) => {
+                            const d = data.monthlySpeakingRatio.byStaff[staff]?.[month];
+                            return (
+                              <td key={staff} className="px-2 py-1.5 text-right tabular-nums">
+                                {d ? (
+                                  <>
+                                    <span className="font-medium text-blue-600">{d.avg}%</span>
+                                    <span className="text-gray-400 text-[10px] ml-1">
+                                      ({d.count}件)
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="text-gray-300">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {overall ? (
+                              <>
+                                <span className="font-bold text-gray-800">{overall.avg}%</span>
+                                <span className="text-gray-400 text-[10px] ml-1">
+                                  ({overall.count}件)
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-gray-300">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </section>

@@ -109,6 +109,14 @@ export interface JobSeekerSummary {
   hireDate: string | null;
 }
 
+// --- 発話比率CA 月別・担当者別平均 ---
+export interface MonthlySpeakingRatioData {
+  months: string[];
+  staffList: string[];
+  byStaff: Record<string, Record<string, { avg: number; count: number }>>;
+  overall: Record<string, { avg: number; count: number }>;
+}
+
 // --- ダッシュボード全体のレスポンス型 ---
 export interface DashboardData {
   isConnected: boolean;
@@ -141,6 +149,8 @@ export interface DashboardData {
   inProgress: InProgressBuckets;
   // 求職者個別
   jobSeekerSummaries: JobSeekerSummary[];
+  // 発話比率CA 月別・担当者別平均
+  monthlySpeakingRatio: MonthlySpeakingRatioData;
 }
 
 // =============================================================
@@ -671,7 +681,7 @@ export function computeInProgress(
         break;
       case "一次面接":
         buckets.一次面接.push(
-          buildItem(a, a.firstInterviewSetDate ?? a.firstInterviewDate)
+          buildItem(a, a.firstInterviewDate ?? a.firstInterviewSetDate)
         );
         break;
       case "二次面接":
@@ -736,6 +746,62 @@ export function buildJobSeekerSummaries(
       const bDate = b.interviewDate ?? "";
       return bDate.localeCompare(aDate);
     });
+}
+
+// =============================================================
+// 発話比率CA 月別・担当者別平均
+// =============================================================
+export function computeMonthlySpeakingRatio(
+  seekers: RawJobSeeker[]
+): MonthlySpeakingRatioData {
+  const byStaffRaw: Record<string, Record<string, { sum: number; count: number }>> = {};
+  const overallRaw: Record<string, { sum: number; count: number }> = {};
+  const monthSet = new Set<string>();
+  const staffSet = new Set<string>();
+
+  for (const s of seekers) {
+    if (s.speakingRatio === null || s.speakingRatio === undefined) continue;
+    if (!s.interviewDate) continue;
+
+    const month = toMonthKey(s.interviewDate);
+    const staff = s.staff || "未設定";
+
+    monthSet.add(month);
+    staffSet.add(staff);
+
+    if (!byStaffRaw[staff]) byStaffRaw[staff] = {};
+    if (!byStaffRaw[staff][month]) byStaffRaw[staff][month] = { sum: 0, count: 0 };
+    byStaffRaw[staff][month].sum += s.speakingRatio;
+    byStaffRaw[staff][month].count++;
+
+    if (!overallRaw[month]) overallRaw[month] = { sum: 0, count: 0 };
+    overallRaw[month].sum += s.speakingRatio;
+    overallRaw[month].count++;
+  }
+
+  const months = Array.from(monthSet).sort();
+  const staffList = Array.from(staffSet).sort();
+
+  const byStaff: Record<string, Record<string, { avg: number; count: number }>> = {};
+  for (const staff of staffList) {
+    byStaff[staff] = {};
+    for (const month of months) {
+      const d = byStaffRaw[staff]?.[month];
+      if (d && d.count > 0) {
+        byStaff[staff][month] = { avg: Math.round(d.sum / d.count), count: d.count };
+      }
+    }
+  }
+
+  const overall: Record<string, { avg: number; count: number }> = {};
+  for (const month of months) {
+    const d = overallRaw[month];
+    if (d && d.count > 0) {
+      overall[month] = { avg: Math.round(d.sum / d.count), count: d.count };
+    }
+  }
+
+  return { months, staffList, byStaff, overall };
 }
 
 // =============================================================
@@ -821,6 +887,7 @@ export function processAllData(
     companySummary.records
   );
   const jobSeekerSummaries = buildJobSeekerSummaries(enrichedSeekers);
+  const monthlySpeakingRatio = computeMonthlySpeakingRatio(seekers);
 
   return {
     isConnected,
@@ -846,5 +913,6 @@ export function processAllData(
     applicationFunnel,
     inProgress,
     jobSeekerSummaries,
+    monthlySpeakingRatio,
   };
 }
