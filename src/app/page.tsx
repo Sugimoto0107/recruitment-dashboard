@@ -493,9 +493,12 @@ function SeekerTableRows({ rows, label }: { rows: JobSeekerSummary[]; label: str
   );
 }
 
+type SeekerSortKey = "interviewDate" | "staff";
+
 // --- 求職者個別テーブル ---
 function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
   const [filter, setFilter] = useState("");
+  const [sortKey, setSortKey] = useState<SeekerSortKey>("interviewDate");
   const { foodRows, nonFoodRows, totalFiltered } = useMemo(() => {
     const q = filter.trim();
     const base = q
@@ -507,10 +510,16 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
             r.finalResult.includes(q)
         )
       : rows.filter((r) => !r.finalResult);
-    const foodRows = base.filter((r) => r.isFood);
-    const nonFoodRows = base.filter((r) => !r.isFood);
+
+    const sorted = [...base].sort((a, b) => {
+      if (sortKey === "staff") return a.staff.localeCompare(b.staff, "ja");
+      return (b.interviewDate ?? "").localeCompare(a.interviewDate ?? "");
+    });
+
+    const foodRows = sorted.filter((r) => r.isFood);
+    const nonFoodRows = sorted.filter((r) => !r.isFood);
     return { foodRows, nonFoodRows, totalFiltered: base.length };
-  }, [rows, filter]);
+  }, [rows, filter, sortKey]);
 
   return (
     <div className="space-y-3">
@@ -523,6 +532,14 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
             onChange={(e) => setFilter(e.target.value)}
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 w-72 max-w-full"
           />
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SeekerSortKey)}
+            className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white text-gray-700"
+          >
+            <option value="interviewDate">面談日順</option>
+            <option value="staff">担当者順</option>
+          </select>
           <span className="text-xs text-gray-500">
             {filter ? "面談実施済 全員から検索" : "面談実施済 × 最終結果未設定"}
           </span>
