@@ -430,8 +430,8 @@ export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
         hireDate: props["入社日"]?.date?.start ?? null,
         staff: txt("担当者"),
         prefecture: txt("居住都道府県"),
-        // 手入力の年齢を優先、なければformulaの計算値を使用
-        age: ageManual ?? ageFormula,
+        // 生年月日がある場合はformulaが自動計算するので優先、なければ手入力を使用
+        age: ageFormula ?? ageManual,
         currentSalary: props["現職年収"]?.number ?? null,
         source: props["流入経路"]?.select?.name ?? "",
         finalResult: props["最終結果"]?.select?.name ?? "",
