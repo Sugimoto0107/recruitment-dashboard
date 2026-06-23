@@ -698,16 +698,24 @@ export function computeApplicationFunnel(
   let interviewNg = 0;
   let declines = 0;
 
+  // フェーズからそのステップ以上に達したかを判定（日付未入力でも動作）
+  const PASSED_FIRST  = new Set(["一次面接","不採用（一次面接NG）","二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
+  const PASSED_SECOND = new Set(["二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
+  const PASSED_FINAL  = new Set(["最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
+  const PASSED_OFFER  = new Set(["内定","内定承諾","入社"]);
+  const PASSED_ACCEPT = new Set(["内定承諾","入社"]);
+
   for (const a of apps) {
     if (a.phase) {
       byPhase[a.phase] = (byPhase[a.phase] ?? 0) + 1;
     }
-    if (a.recommendDate) recommended += 1;
-    if (a.firstInterviewDate) firstInterview += 1;
-    if (a.secondInterviewDate) secondInterview += 1;
-    if (a.finalInterviewDate) finalInterview += 1;
-    if (a.offerDate) offers += 1;
-    if (a.acceptanceDate) acceptances += 1;
+    // 日付があれば日付を優先、なければフェーズで推算（累積カウント）
+    if (a.recommendDate || a.phase) recommended += 1;
+    if (a.firstInterviewDate  || (a.phase && PASSED_FIRST.has(a.phase)))  firstInterview += 1;
+    if (a.secondInterviewDate || (a.phase && PASSED_SECOND.has(a.phase))) secondInterview += 1;
+    if (a.finalInterviewDate  || (a.phase && PASSED_FINAL.has(a.phase)))  finalInterview += 1;
+    if (a.offerDate           || (a.phase && PASSED_OFFER.has(a.phase)))  offers += 1;
+    if (a.acceptanceDate      || (a.phase && PASSED_ACCEPT.has(a.phase))) acceptances += 1;
     if (a.phase === "入社") joins += 1;
     if (a.documentNgDate) documentNg += 1;
     if (a.interviewNgDate) interviewNg += 1;
