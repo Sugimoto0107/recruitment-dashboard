@@ -1247,6 +1247,47 @@ export default function Dashboard() {
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+                      <td className="px-2 py-1.5 text-gray-700">平均</td>
+                      {data.monthlySpeakingRatio.staffList.map((staff) => {
+                        let sum = 0, cnt = 0;
+                        for (const m of data.monthlySpeakingRatio.months) {
+                          const d = data.monthlySpeakingRatio.byStaff[staff]?.[m];
+                          if (d) { sum += d.avg * d.count; cnt += d.count; }
+                        }
+                        const avg = cnt > 0 ? Math.round(sum / cnt) : null;
+                        return (
+                          <td key={staff} className="px-2 py-1.5 text-right tabular-nums">
+                            {avg !== null ? (
+                              <>
+                                <span className="text-blue-700">{avg}%</span>
+                                <span className="text-gray-400 text-[10px] ml-1">({cnt}件)</span>
+                              </>
+                            ) : <span className="text-gray-300">-</span>}
+                          </td>
+                        );
+                      })}
+                      {(() => {
+                        let oSum = 0, oCnt = 0;
+                        for (const m of data.monthlySpeakingRatio.months) {
+                          const d = data.monthlySpeakingRatio.overall[m];
+                          if (d) { oSum += d.avg * d.count; oCnt += d.count; }
+                        }
+                        const oAvg = oCnt > 0 ? Math.round(oSum / oCnt) : null;
+                        return (
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {oAvg !== null ? (
+                              <>
+                                <span className="text-gray-800">{oAvg}%</span>
+                                <span className="text-gray-400 text-[10px] ml-1">({oCnt}件)</span>
+                              </>
+                            ) : <span className="text-gray-300">-</span>}
+                          </td>
+                        );
+                      })()}
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
