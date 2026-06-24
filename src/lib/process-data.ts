@@ -822,7 +822,7 @@ export function buildJobSeekerSummaries(
   seekers: RawJobSeeker[]
 ): JobSeekerSummary[] {
   return seekers
-    .filter((s) => !s.isInvalid && s.interviewDone)
+    .filter((s) => !s.isInvalid && (s.interviewDone || s.recommendations > 0))
     .map((s) => ({
       id: s.id,
       name: s.name || "(未設定)",
@@ -937,6 +937,13 @@ export function processAllData(
   }
   const appMetricsBySeeker = new Map<string, AppDerivedMetrics>();
 
+  // 応募ファネルと同じフェーズ判定セット（日付未入力でもフェーズから補完）
+  const _PASSED_FIRST  = new Set(["一次面接","不採用（一次面接NG）","二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
+  const _PASSED_SECOND = new Set(["二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
+  const _PASSED_FINAL  = new Set(["最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
+  const _PASSED_OFFER  = new Set(["内定","内定承諾","入社"]);
+  const _PASSED_ACCEPT = new Set(["内定承諾","入社"]);
+
   for (const app of applications) {
     for (const seekerId of app.seekerIds) {
       if (!appMetricsBySeeker.has(seekerId)) {
@@ -947,14 +954,16 @@ export function processAllData(
         });
       }
       const m = appMetricsBySeeker.get(seekerId)!;
-      if (app.recommendDate) m.recommendations++;
-      if (app.firstInterviewSetDate) m.interviewSettings++;
-      if (app.firstInterviewDate) m.interviewsConducted++;
-      if (app.secondInterviewDate) { m.firstInterviewPass++; m.secondInterviewExecuted++; }
-      if (app.finalInterviewDate) { m.secondInterviewPass++; m.finalInterviewExecuted++; }
-      if (app.offerDate) m.offers++;
-      if (app.acceptanceDate) m.acceptances++;
-      if (app.phase === "入社") m.hires++;
+      const ph = app.phase;
+      // 応募管理DBへの登録 = 推薦（全件カウント）
+      m.recommendations++;
+      if (app.firstInterviewSetDate || (ph && _PASSED_FIRST.has(ph)))  m.interviewSettings++;
+      if (app.firstInterviewDate    || (ph && _PASSED_FIRST.has(ph)))  m.interviewsConducted++;
+      if (app.secondInterviewDate   || (ph && _PASSED_SECOND.has(ph))) { m.firstInterviewPass++; m.secondInterviewExecuted++; }
+      if (app.finalInterviewDate    || (ph && _PASSED_FINAL.has(ph)))  { m.secondInterviewPass++; m.finalInterviewExecuted++; }
+      if (app.offerDate             || (ph && _PASSED_OFFER.has(ph)))  m.offers++;
+      if (app.acceptanceDate        || (ph && _PASSED_ACCEPT.has(ph))) m.acceptances++;
+      if (ph === "入社") m.hires++;
     }
   }
 
