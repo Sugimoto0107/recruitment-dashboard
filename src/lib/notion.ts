@@ -69,13 +69,17 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 export type ApplicationPhase = (typeof APPLICATION_PHASES)[number];
 
 // --- Notion クライアント初期化 ---
-// notionVersion: "2022-06-28" を明示指定（SDKデフォルトの2025系ではdatabases.queryが廃止のため）
 function getNotionClient(): Client | null {
   const apiKey = process.env.NOTION_API_KEY;
-  if (!apiKey || apiKey === "your_notion_api_key_here") {
-    return null;
-  }
+  if (!apiKey || apiKey === "your_notion_api_key_here") return null;
   return new Client({ auth: apiKey, notionVersion: "2022-06-28" });
+}
+
+// マルチソースDB用クライアント（バージョン未指定でSDKデフォルトを使用）
+function getNotionClientLatest(): Client | null {
+  const apiKey = process.env.NOTION_API_KEY;
+  if (!apiKey || apiKey === "your_notion_api_key_here") return null;
+  return new Client({ auth: apiKey });
 }
 
 // --- ページネーション付きクエリ（notion.request で databases/{id}/query を直接呼び出し） ---
@@ -393,12 +397,51 @@ export interface RawJobSeeker {
   jobChangeCount: number | null;
 }
 
-export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
+async function querySeekerPages(): Promise<any[]> {
+  const seekerDbId = getSeekerDbId();
+  if (!seekerDbId) return [];
+
+  // まずマルチソース対応クライアントで試行
+  const notionLatest = getNotionClientLatest();
+  if (notionLatest) {
+    try {
+      return await queryAllPages(notionLatest, seekerDbId);
+    } catch (_e1) {
+      // 失敗したら /v1/search にフォールバック
+    }
+  }
+
+  // /v1/search フォールバック（マルチソースDB用）
   const notion = getNotionClient();
   if (!notion) return [];
+  const dbIdNorm = seekerDbId.replace(/-/g, "");
+  const allResults: any[] = [];
+  let hasMore = true;
+  let startCursor: string | undefined = undefined;
 
+  while (hasMore) {
+    const body: Record<string, unknown> = {
+      filter: { property: "object", value: "page" },
+      page_size: 100,
+      sort: { direction: "descending", timestamp: "last_edited_time" },
+    };
+    if (startCursor) body.start_cursor = startCursor;
+
+    const response: any = await notion.request({ path: "search", method: "post", body });
+    const filtered = (response.results || []).filter(
+      (p: any) => (p.parent?.database_id || "").replace(/-/g, "") === dbIdNorm
+    );
+    allResults.push(...filtered);
+    hasMore = response.has_more;
+    startCursor = response.next_cursor ?? undefined;
+    if (allResults.length >= 2000) break;
+  }
+  return allResults;
+}
+
+export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
   try {
-    const results = await queryAllPages(notion, getSeekerDbId());
+    const results = await querySeekerPages();
 
     return results.map((page: any) => {
       const props = page.properties;
