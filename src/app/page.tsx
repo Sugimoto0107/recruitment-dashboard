@@ -733,10 +733,14 @@ export default function Dashboard() {
   }, [displayMetrics]);
 
   // 表示中の期間×選択媒体のマーケ費合計（KPIカード・合計行用）
-  const displayMarketingTotal = useMemo(
-    () => displayMetrics.reduce((sum, r) => sum + (selectedMarketingCostMap[r.month] ?? 0), 0),
-    [displayMetrics, selectedMarketingCostMap]
-  );
+  // 期間フィルターなし = 全マーケ費（求職者エントリーがない月も含む）
+  // 期間フィルターあり = 選択月のみ合算
+  const displayMarketingTotal = useMemo(() => {
+    if (selectedMonths.length > 0) {
+      return selectedMonths.reduce((sum, month) => sum + (selectedMarketingCostMap[month] ?? 0), 0);
+    }
+    return selectedMarketingTotal;
+  }, [selectedMonths, selectedMarketingCostMap, selectedMarketingTotal]);
 
   const grandTotals = useMemo((): Record<CAMetricKey, number> => {
     if (!data) {
