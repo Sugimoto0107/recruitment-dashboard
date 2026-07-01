@@ -319,6 +319,7 @@ export interface RawApplication {
   offerDate: string | null;
   acceptanceDate: string | null;
   expectedJoinDate: string | null;
+  revenue: number | null;
   seekerIds: string[];
   companyIds: string[];
 }
@@ -351,6 +352,7 @@ export async function getAllApplications(): Promise<RawApplication[]> {
         offerDate: dateOf("内定日"),
         acceptanceDate: dateOf("内定承諾日"),
         expectedJoinDate: dateOf("入社想定日"),
+        revenue: props["売上見込み金額"]?.number ?? null,
         seekerIds: relIds("求職者"),
         companyIds: relIds("応募企業"),
       };

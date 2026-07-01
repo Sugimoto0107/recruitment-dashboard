@@ -13,6 +13,8 @@ import type {
   InProgressItem,
   JobSeekerSummary,
   MonthlySpeakingRatioData,
+  MonthlyAcceptanceData,
+  MonthlyJoinForecastData,
 } from "@/lib/process-data";
 import type { RakudenSummary } from "@/lib/sheets";
 import {
@@ -803,6 +805,35 @@ export default function Dashboard() {
     }));
   }, [displayMetrics]);
 
+  // 内定承諾日ベース月別チャート（応募管理 DB の内定承諾日で集計）
+  const acceptanceChartData = useMemo((): { month: string; 内定承諾数: number; 売上見込み: number }[] => {
+    if (!data?.monthlyAcceptances) return [];
+    return data.monthlyAcceptances.map((m: MonthlyAcceptanceData) => ({
+      month: m.month.slice(5),
+      内定承諾数: m.count,
+      売上見込み: m.revenue,
+    }));
+  }, [data]);
+
+  // 入社想定日ベース月別チャート
+  const joinForecastChartData = useMemo((): { month: string; 入社見込み数: number; 売上見込み: number }[] => {
+    if (!data?.monthlyJoinForecast) return [];
+    return data.monthlyJoinForecast.map((m: MonthlyJoinForecastData) => ({
+      month: m.month.slice(5),
+      入社見込み数: m.count,
+      売上見込み: m.revenue,
+    }));
+  }, [data]);
+
+  // 売上見込み合計（内定承諾済み × 期間フィルター）
+  const displayRevenueForecast = useMemo(() => {
+    if (!data?.monthlyAcceptances) return 0;
+    const months = selectedMonths.length > 0
+      ? data.monthlyAcceptances.filter((m: MonthlyAcceptanceData) => selectedMonths.includes(m.month))
+      : data.monthlyAcceptances;
+    return months.reduce((sum: number, m: MonthlyAcceptanceData) => sum + m.revenue, 0);
+  }, [data, selectedMonths]);
+
   function toggleSource(s: string) {
     setSelectedSources((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
@@ -997,34 +1028,63 @@ export default function Dashboard() {
             求職者対応（CA）
           </h2>
 
-          {/* 内定承諾数 月別推移（最上部） */}
-          {barChartData.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-700">内定承諾数 月別推移</h3>
-                <div className="flex items-center gap-4">
-                  <span className="text-xs text-gray-400">{periodNote}</span>
-                  <div className="text-right">
-                    <span className="text-xs text-gray-500">期間合計</span>
-                    <span className="ml-1.5 text-xl font-bold text-purple-600 tabular-nums">
-                      {fmt(displayTotals["内定承諾数"])}
-                    </span>
-                    <span className="text-xs text-gray-500 ml-0.5">件</span>
+          {/* 内定承諾数 / 入社見込み 月別推移（最上部） */}
+          {(acceptanceChartData.length > 0 || joinForecastChartData.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {acceptanceChartData.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">内定承諾数 月別推移</h3>
+                    <div className="text-right">
+                      <span className="text-xs text-gray-500">累計</span>
+                      <span className="ml-1.5 text-xl font-bold text-purple-600 tabular-nums">
+                        {fmt(acceptanceChartData.reduce((s, r) => s + r.内定承諾数, 0))}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-0.5">件</span>
+                    </div>
                   </div>
+                  <p className="text-[10px] text-gray-400 mb-2">内定承諾日ベース（応募管理 DB）</p>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={acceptanceChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={24} />
+                      <Tooltip
+                        formatter={(v: any) => [`${v}件`, "内定承諾数"]}
+                        contentStyle={{ fontSize: 12 }}
+                      />
+                      <Bar dataKey="内定承諾数" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={barChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={28} />
-                  <Tooltip
-                    formatter={(v: any) => [`${v}件`, "内定承諾数"]}
-                    contentStyle={{ fontSize: 12 }}
-                  />
-                  <Bar dataKey="内定承諾数" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              )}
+              {joinForecastChartData.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">入社見込み 月別推移</h3>
+                    <div className="text-right">
+                      <span className="text-xs text-gray-500">累計</span>
+                      <span className="ml-1.5 text-xl font-bold text-emerald-600 tabular-nums">
+                        {fmt(joinForecastChartData.reduce((s, r) => s + r.入社見込み数, 0))}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-0.5">件</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mb-2">入社想定日ベース（応募管理 DB）</p>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={joinForecastChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={24} />
+                      <Tooltip
+                        formatter={(v: any) => [`${v}件`, "入社見込み数"]}
+                        contentStyle={{ fontSize: 12 }}
+                      />
+                      <Bar dataKey="入社見込み数" fill="#10B981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
           )}
 
@@ -1068,7 +1128,12 @@ export default function Dashboard() {
           </div>
 
           {/* マーケ費用KPIカード（フィルターに連動） */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-3">
+            <KPICard
+              title="売上見込み"
+              value={displayRevenueForecast > 0 ? "¥" + fmt(displayRevenueForecast) : "-"}
+              sub="内定承諾日ベース 売上見込み金額合計"
+            />
             <KPICard
               title="決定原価"
               value={displayTotals["内定承諾数"] > 0 && displayMarketingTotal > 0
@@ -1076,6 +1141,15 @@ export default function Dashboard() {
                 : "-"}
               sub={`マーケ費 ¥${fmt(displayMarketingTotal)} ÷ 承諾 ${fmt(displayTotals["内定承諾数"])}件`}
             />
+            <KPICard
+              title="原価率"
+              value={displayRevenueForecast > 0 && displayMarketingTotal > 0
+                ? ((displayMarketingTotal / displayRevenueForecast) * 100).toFixed(1) + "%"
+                : "-"}
+              sub={`マーケ費 ÷ 売上見込み`}
+            />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-3">
             <KPICard
               title="面談単価"
               value={displayTotals["面談数"] > 0 && displayMarketingTotal > 0

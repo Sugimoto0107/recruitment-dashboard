@@ -114,6 +114,20 @@ export interface JobSeekerSummary {
   hireDate: string | null;
 }
 
+// --- 内定承諾日ベース月別集計 ---
+export interface MonthlyAcceptanceData {
+  month: string;
+  count: number;
+  revenue: number;
+}
+
+// --- 入社想定日ベース月別集計 ---
+export interface MonthlyJoinForecastData {
+  month: string;
+  count: number;
+  revenue: number;
+}
+
 // --- 発話比率CA 月別・担当者別平均 ---
 export interface MonthlySpeakingRatioData {
   months: string[];
@@ -158,6 +172,9 @@ export interface DashboardData {
   jobSeekerSummaries: JobSeekerSummary[];
   // 発話比率CA 月別・担当者別平均
   monthlySpeakingRatio: MonthlySpeakingRatioData;
+  // 応募管理DBベース: 内定承諾日・入社想定日別集計
+  monthlyAcceptances: MonthlyAcceptanceData[];
+  monthlyJoinForecast: MonthlyJoinForecastData[];
 }
 
 // =============================================================
@@ -913,6 +930,35 @@ export function computeMonthlySpeakingRatio(
 }
 
 // =============================================================
+// 内定承諾日 / 入社想定日ベース月別集計（応募管理 DB から）
+// =============================================================
+export function computeMonthlyAcceptances(apps: RawApplication[]): MonthlyAcceptanceData[] {
+  const map = new Map<string, MonthlyAcceptanceData>();
+  for (const app of apps) {
+    if (!app.acceptanceDate) continue;
+    const month = toMonthKey(app.acceptanceDate);
+    if (!map.has(month)) map.set(month, { month, count: 0, revenue: 0 });
+    const m = map.get(month)!;
+    m.count++;
+    if (app.revenue) m.revenue += app.revenue;
+  }
+  return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+export function computeMonthlyJoinForecast(apps: RawApplication[]): MonthlyJoinForecastData[] {
+  const map = new Map<string, MonthlyJoinForecastData>();
+  for (const app of apps) {
+    if (!app.expectedJoinDate) continue;
+    const month = toMonthKey(app.expectedJoinDate);
+    if (!map.has(month)) map.set(month, { month, count: 0, revenue: 0 });
+    const m = map.get(month)!;
+    m.count++;
+    if (app.revenue) m.revenue += app.revenue;
+  }
+  return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+// =============================================================
 // 全体集計
 // =============================================================
 export function processAllData(
@@ -1007,6 +1053,8 @@ export function processAllData(
   );
   const jobSeekerSummaries = buildJobSeekerSummaries(enrichedSeekers);
   const monthlySpeakingRatio = computeMonthlySpeakingRatio(seekers);
+  const monthlyAcceptances = computeMonthlyAcceptances(applications);
+  const monthlyJoinForecast = computeMonthlyJoinForecast(applications);
 
   return {
     isConnected,
@@ -1035,5 +1083,7 @@ export function processAllData(
     inProgress,
     jobSeekerSummaries,
     monthlySpeakingRatio,
+    monthlyAcceptances,
+    monthlyJoinForecast,
   };
 }
