@@ -805,23 +805,49 @@ export default function Dashboard() {
     }));
   }, [displayMetrics]);
 
-  // 内定承諾日ベース月別チャート（応募管理 DB の内定承諾日で集計）
-  const acceptanceChartData = useMemo((): { month: string; 内定承諾数: number; 売上見込み: number }[] => {
-    if (!data?.monthlyAcceptances) return [];
-    return data.monthlyAcceptances.map((m: MonthlyAcceptanceData) => ({
-      month: m.month.slice(5),
-      内定承諾数: m.count,
-      売上見込み: m.revenue,
+  // 2025-12 スタートで全月を埋めた月リストを生成
+  const CHART_START = "2025-12";
+  function buildMonthRange(latestMonth: string): string[] {
+    const months: string[] = [];
+    const now = new Date();
+    const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const end = latestMonth > curMonth ? latestMonth : curMonth;
+    const [sy, sm] = CHART_START.split("-").map(Number);
+    const [ey, em] = end.split("-").map(Number);
+    let y = sy, mo = sm;
+    while (y < ey || (y === ey && mo <= em)) {
+      months.push(`${y}-${String(mo).padStart(2, "0")}`);
+      mo++;
+      if (mo > 12) { mo = 1; y++; }
+    }
+    return months;
+  }
+  function toChartLabel(month: string): string {
+    // "2025-12" → "25/12"
+    return month.slice(2, 4) + "/" + month.slice(5);
+  }
+
+  // 内定承諾日ベース月別チャート（応募管理 DB の内定承諾日で集計・全月表示）
+  const acceptanceChartData = useMemo((): { month: string; 内定承諾数: number }[] => {
+    if (!data) return [];
+    const acceptances = data.monthlyAcceptances ?? [];
+    const last = acceptances.length > 0 ? acceptances[acceptances.length - 1].month : CHART_START;
+    const lookup = new Map(acceptances.map((m: MonthlyAcceptanceData) => [m.month, m.count]));
+    return buildMonthRange(last).map(month => ({
+      month: toChartLabel(month),
+      内定承諾数: lookup.get(month) ?? 0,
     }));
   }, [data]);
 
-  // 入社想定日ベース月別チャート
-  const joinForecastChartData = useMemo((): { month: string; 入社見込み数: number; 売上見込み: number }[] => {
-    if (!data?.monthlyJoinForecast) return [];
-    return data.monthlyJoinForecast.map((m: MonthlyJoinForecastData) => ({
-      month: m.month.slice(5),
-      入社見込み数: m.count,
-      売上見込み: m.revenue,
+  // 入社想定日ベース月別チャート（全月表示）
+  const joinForecastChartData = useMemo((): { month: string; 入社見込み数: number }[] => {
+    if (!data) return [];
+    const forecasts = data.monthlyJoinForecast ?? [];
+    const last = forecasts.length > 0 ? forecasts[forecasts.length - 1].month : CHART_START;
+    const lookup = new Map(forecasts.map((m: MonthlyJoinForecastData) => [m.month, m.count]));
+    return buildMonthRange(last).map(month => ({
+      month: toChartLabel(month),
+      入社見込み数: lookup.get(month) ?? 0,
     }));
   }, [data]);
 
