@@ -424,29 +424,31 @@ function MultiSelectPills({
 const SEEKER_COL_SPAN = 21;
 
 function SeekerTableHeader() {
+  const thCls = "px-3 py-2 font-medium whitespace-nowrap bg-gray-50 border-b border-gray-200";
+  const thRCls = thCls + " text-right";
   return (
-    <tr className="bg-gray-50 text-gray-600 text-left">
-      <th className="px-3 py-2 font-medium whitespace-nowrap">氏名</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">流入経路</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">性別</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">最終学歴</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">転職回数</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">担当者</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">面談日</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">エントリー日</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">最終結果</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">推薦</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">面接設定</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">面接実施</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">1次通過</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">2次実施</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">2次通過</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">最終実施</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">内定</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">承諾</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">承諾日</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap text-right">入社</th>
-      <th className="px-3 py-2 font-medium whitespace-nowrap">入社日</th>
+    <tr className="text-gray-600 text-left">
+      <th className={thCls}>氏名</th>
+      <th className={thCls}>流入経路</th>
+      <th className={thCls}>性別</th>
+      <th className={thCls}>最終学歴</th>
+      <th className={thRCls}>転職回数</th>
+      <th className={thCls}>担当者</th>
+      <th className={thCls}>面談日</th>
+      <th className={thCls}>エントリー日</th>
+      <th className={thCls}>最終結果</th>
+      <th className={thRCls}>推薦</th>
+      <th className={thRCls}>面接設定</th>
+      <th className={thRCls}>面接実施</th>
+      <th className={thRCls}>1次通過</th>
+      <th className={thRCls}>2次実施</th>
+      <th className={thRCls}>2次通過</th>
+      <th className={thRCls}>最終実施</th>
+      <th className={thRCls}>内定</th>
+      <th className={thRCls}>承諾</th>
+      <th className={thCls}>承諾日</th>
+      <th className={thRCls}>入社</th>
+      <th className={thCls}>入社日</th>
     </tr>
   );
 }
@@ -552,9 +554,9 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
           {fmt(totalFiltered)} / {fmt(rows.length)} 件
         </span>
       </div>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto max-h-[600px]">
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <SeekerTableHeader />
           </thead>
           <tbody>
