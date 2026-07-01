@@ -827,38 +827,71 @@ export default function Dashboard() {
     return month.slice(2, 4) + "/" + month.slice(5);
   }
 
-  // 内定承諾日ベース月別チャート（応募管理 DB の内定承諾日で集計・全月表示）
-  const acceptanceChartData = useMemo((): { month: string; 内定承諾数: number }[] => {
+  // 流入経路フィルターを適用した内定承諾集計（全体 or ソース別合計）
+  const filteredAcceptances = useMemo((): MonthlyAcceptanceData[] => {
     if (!data) return [];
-    const acceptances = data.monthlyAcceptances ?? [];
-    const last = acceptances.length > 0 ? acceptances[acceptances.length - 1].month : CHART_START;
-    const lookup = new Map(acceptances.map((m: MonthlyAcceptanceData) => [m.month, m.count]));
+    if (selectedSources.length === 0) return data.monthlyAcceptances ?? [];
+    const bySource = data.monthlyAcceptancesBySource ?? {};
+    const combined = new Map<string, MonthlyAcceptanceData>();
+    for (const src of selectedSources) {
+      for (const m of bySource[src] ?? []) {
+        if (!combined.has(m.month)) combined.set(m.month, { month: m.month, count: 0, revenue: 0 });
+        const e = combined.get(m.month)!;
+        e.count += m.count;
+        e.revenue += m.revenue;
+      }
+    }
+    return Array.from(combined.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }, [data, selectedSources]);
+
+  // 流入経路フィルターを適用した入社見込み集計
+  const filteredJoinForecast = useMemo((): MonthlyJoinForecastData[] => {
+    if (!data) return [];
+    if (selectedSources.length === 0) return data.monthlyJoinForecast ?? [];
+    const bySource = data.monthlyJoinForecastBySource ?? {};
+    const combined = new Map<string, MonthlyJoinForecastData>();
+    for (const src of selectedSources) {
+      for (const m of bySource[src] ?? []) {
+        if (!combined.has(m.month)) combined.set(m.month, { month: m.month, count: 0, revenue: 0 });
+        const e = combined.get(m.month)!;
+        e.count += m.count;
+        e.revenue += m.revenue;
+      }
+    }
+    return Array.from(combined.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }, [data, selectedSources]);
+
+  // 内定承諾日ベース月別チャート（流入経路フィルター連動・全月表示）
+  const acceptanceChartData = useMemo((): { month: string; 内定承諾数: number }[] => {
+    const last = filteredAcceptances.length > 0
+      ? filteredAcceptances[filteredAcceptances.length - 1].month
+      : CHART_START;
+    const lookup = new Map(filteredAcceptances.map((m: MonthlyAcceptanceData) => [m.month, m.count]));
     return buildMonthRange(last).map(month => ({
       month: toChartLabel(month),
       内定承諾数: lookup.get(month) ?? 0,
     }));
-  }, [data]);
+  }, [filteredAcceptances]);
 
-  // 入社想定日ベース月別チャート（全月表示）
+  // 入社想定日ベース月別チャート（流入経路フィルター連動・全月表示）
   const joinForecastChartData = useMemo((): { month: string; 入社見込み数: number }[] => {
-    if (!data) return [];
-    const forecasts = data.monthlyJoinForecast ?? [];
-    const last = forecasts.length > 0 ? forecasts[forecasts.length - 1].month : CHART_START;
-    const lookup = new Map(forecasts.map((m: MonthlyJoinForecastData) => [m.month, m.count]));
+    const last = filteredJoinForecast.length > 0
+      ? filteredJoinForecast[filteredJoinForecast.length - 1].month
+      : CHART_START;
+    const lookup = new Map(filteredJoinForecast.map((m: MonthlyJoinForecastData) => [m.month, m.count]));
     return buildMonthRange(last).map(month => ({
       month: toChartLabel(month),
       入社見込み数: lookup.get(month) ?? 0,
     }));
-  }, [data]);
+  }, [filteredJoinForecast]);
 
-  // 売上見込み合計（内定承諾済み × 期間フィルター）
+  // 売上見込み合計（流入経路フィルター × 期間フィルター）
   const displayRevenueForecast = useMemo(() => {
-    if (!data?.monthlyAcceptances) return 0;
     const months = selectedMonths.length > 0
-      ? data.monthlyAcceptances.filter((m: MonthlyAcceptanceData) => selectedMonths.includes(m.month))
-      : data.monthlyAcceptances;
+      ? filteredAcceptances.filter((m: MonthlyAcceptanceData) => selectedMonths.includes(m.month))
+      : filteredAcceptances;
     return months.reduce((sum: number, m: MonthlyAcceptanceData) => sum + m.revenue, 0);
-  }, [data, selectedMonths]);
+  }, [filteredAcceptances, selectedMonths]);
 
   function toggleSource(s: string) {
     setSelectedSources((prev) =>

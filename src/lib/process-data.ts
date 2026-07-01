@@ -172,9 +172,11 @@ export interface DashboardData {
   jobSeekerSummaries: JobSeekerSummary[];
   // 発話比率CA 月別・担当者別平均
   monthlySpeakingRatio: MonthlySpeakingRatioData;
-  // 応募管理DBベース: 内定承諾日・入社想定日別集計
+  // 応募管理DBベース: 内定承諾日・入社想定日別集計（全体＋流入経路別）
   monthlyAcceptances: MonthlyAcceptanceData[];
   monthlyJoinForecast: MonthlyJoinForecastData[];
+  monthlyAcceptancesBySource: Record<string, MonthlyAcceptanceData[]>;
+  monthlyJoinForecastBySource: Record<string, MonthlyJoinForecastData[]>;
 }
 
 // =============================================================
@@ -932,6 +934,16 @@ export function computeMonthlySpeakingRatio(
 // =============================================================
 // 内定承諾日 / 入社想定日ベース月別集計（応募管理 DB から）
 // =============================================================
+
+// 応募から紐づく求職者の流入経路を取得（最初の seekerId を優先）
+function getAppSource(app: RawApplication, seekerSourceMap: Map<string, string>): string {
+  for (const id of app.seekerIds) {
+    const src = seekerSourceMap.get(id);
+    if (src) return src;
+  }
+  return "未設定";
+}
+
 export function computeMonthlyAcceptances(apps: RawApplication[]): MonthlyAcceptanceData[] {
   const map = new Map<string, MonthlyAcceptanceData>();
   for (const app of apps) {
@@ -956,6 +968,55 @@ export function computeMonthlyJoinForecast(apps: RawApplication[]): MonthlyJoinF
     if (app.revenue) m.revenue += app.revenue;
   }
   return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+// 流入経路別の内定承諾・入社見込み集計
+function buildMonthDataBySource<T extends { month: string; count: number; revenue: number }>(
+  apps: RawApplication[],
+  seekerSourceMap: Map<string, string>,
+  getDateKey: (app: RawApplication) => string | null,
+  makeEmpty: (month: string) => T
+): Record<string, T[]> {
+  const bySource: Record<string, Map<string, T>> = {};
+  for (const app of apps) {
+    const date = getDateKey(app);
+    if (!date) continue;
+    const month = toMonthKey(date);
+    const source = getAppSource(app, seekerSourceMap);
+    if (!bySource[source]) bySource[source] = new Map();
+    const srcMap = bySource[source];
+    if (!srcMap.has(month)) srcMap.set(month, makeEmpty(month));
+    const m = srcMap.get(month)!;
+    m.count++;
+    if (app.revenue) m.revenue += app.revenue;
+  }
+  const result: Record<string, T[]> = {};
+  for (const [src, map] of Object.entries(bySource)) {
+    result[src] = Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }
+  return result;
+}
+
+export function computeMonthlyAcceptancesBySource(
+  apps: RawApplication[],
+  seekerSourceMap: Map<string, string>
+): Record<string, MonthlyAcceptanceData[]> {
+  return buildMonthDataBySource(
+    apps, seekerSourceMap,
+    (a) => a.acceptanceDate,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
+}
+
+export function computeMonthlyJoinForecastBySource(
+  apps: RawApplication[],
+  seekerSourceMap: Map<string, string>
+): Record<string, MonthlyJoinForecastData[]> {
+  return buildMonthDataBySource(
+    apps, seekerSourceMap,
+    (a) => a.expectedJoinDate,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
 }
 
 // =============================================================
@@ -1055,6 +1116,11 @@ export function processAllData(
   const monthlySpeakingRatio = computeMonthlySpeakingRatio(seekers);
   const monthlyAcceptances = computeMonthlyAcceptances(applications);
   const monthlyJoinForecast = computeMonthlyJoinForecast(applications);
+  const seekerSourceMap = new Map<string, string>(
+    seekers.map(s => [s.id, s.source || "未設定"])
+  );
+  const monthlyAcceptancesBySource = computeMonthlyAcceptancesBySource(applications, seekerSourceMap);
+  const monthlyJoinForecastBySource = computeMonthlyJoinForecastBySource(applications, seekerSourceMap);
 
   return {
     isConnected,
@@ -1085,5 +1151,7 @@ export function processAllData(
     monthlySpeakingRatio,
     monthlyAcceptances,
     monthlyJoinForecast,
+    monthlyAcceptancesBySource,
+    monthlyJoinForecastBySource,
   };
 }

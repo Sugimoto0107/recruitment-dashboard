@@ -91,6 +91,8 @@ function emptyData(): DashboardData {
     monthlySpeakingRatio: { months: [], staffList: [], byStaff: {}, overall: {} },
     monthlyAcceptances: [],
     monthlyJoinForecast: [],
+    monthlyAcceptancesBySource: {},
+    monthlyJoinForecastBySource: {},
   };
 }
 
