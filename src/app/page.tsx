@@ -21,6 +21,8 @@ import {
   Cell,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -681,6 +683,25 @@ export default function Dashboard() {
   }, [fetchData]);
 
   const marketingCostMap = useMemo(() => getMarketingCostMap(), []);
+  // 選択中の流入経路に対応するマーケ費（媒体名が流入経路と一致する前提）
+  const selectedMarketingCostMap = useMemo((): Record<string, number> => {
+    if (selectedSources.length === 0) return marketingCostMap;
+    const map: Record<string, number> = {};
+    for (const mc of MARKETING_COSTS) {
+      let cost = 0;
+      for (const src of selectedSources) {
+        cost += mc.breakdown?.[src] ?? 0;
+      }
+      if (cost > 0) map[mc.month] = cost;
+    }
+    return map;
+  }, [selectedSources, marketingCostMap]);
+
+  // 全期間・選択媒体の合計（累計行用）
+  const selectedMarketingTotal = useMemo(
+    () => Object.values(selectedMarketingCostMap).reduce((a, b) => a + b, 0),
+    [selectedMarketingCostMap]
+  );
 
   const displayMetrics = useMemo((): MonthlyCAMetrics[] => {
     if (!data) return [];
@@ -706,6 +727,12 @@ export default function Dashboard() {
     }
     return t as Record<CAMetricKey, number>;
   }, [displayMetrics]);
+
+  // 表示中の期間×選択媒体のマーケ費合計（KPIカード・合計行用）
+  const displayMarketingTotal = useMemo(
+    () => displayMetrics.reduce((sum, r) => sum + (selectedMarketingCostMap[r.month] ?? 0), 0),
+    [displayMetrics, selectedMarketingCostMap]
+  );
 
   const grandTotals = useMemo((): Record<CAMetricKey, number> => {
     if (!data) {
@@ -759,9 +786,8 @@ export default function Dashboard() {
   }, [data, selectedStaff, selectedSources, selectedMonths]);
 
   function cpa(month: string): string {
-    const cost = marketingCostMap[month] ?? 0;
-    if (!data) return "-";
-    const row = data.monthlyMetrics.find((m) => m.month === month);
+    const cost = selectedMarketingCostMap[month] ?? 0;
+    const row = displayMetrics.find((m) => m.month === month);
     if (!row || row.エントリー数 === 0 || cost === 0) return "-";
     return "¥" + fmt(Math.round(cost / row.エントリー数));
   }
@@ -971,6 +997,37 @@ export default function Dashboard() {
             求職者対応（CA）
           </h2>
 
+          {/* 内定承諾数 月別推移（最上部） */}
+          {barChartData.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">内定承諾数 月別推移</h3>
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-gray-400">{periodNote}</span>
+                  <div className="text-right">
+                    <span className="text-xs text-gray-500">期間合計</span>
+                    <span className="ml-1.5 text-xl font-bold text-purple-600 tabular-nums">
+                      {fmt(displayTotals["内定承諾数"])}
+                    </span>
+                    <span className="text-xs text-gray-500 ml-0.5">件</span>
+                  </div>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={barChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={28} />
+                  <Tooltip
+                    formatter={(v: any) => [`${v}件`, "内定承諾数"]}
+                    contentStyle={{ fontSize: 12 }}
+                  />
+                  <Bar dataKey="内定承諾数" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
           <div className="space-y-2 mb-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-gray-500 mr-1 shrink-0">担当者:</span>
@@ -1007,6 +1064,38 @@ export default function Dashboard() {
               onToggle={toggleMonth}
               onSelectAll={clearMonths}
               allActiveLabel="全期間"
+            />
+          </div>
+
+          {/* マーケ費用KPIカード（フィルターに連動） */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+            <KPICard
+              title="決定原価"
+              value={displayTotals["内定承諾数"] > 0 && displayMarketingTotal > 0
+                ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["内定承諾数"]))
+                : "-"}
+              sub={`マーケ費 ¥${fmt(displayMarketingTotal)} ÷ 承諾 ${fmt(displayTotals["内定承諾数"])}件`}
+            />
+            <KPICard
+              title="面談単価"
+              value={displayTotals["面談数"] > 0 && displayMarketingTotal > 0
+                ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["面談数"]))
+                : "-"}
+              sub={`÷ 面談 ${fmt(displayTotals["面談数"])}件`}
+            />
+            <KPICard
+              title="エントリー単価"
+              value={displayTotals["エントリー数"] > 0 && displayMarketingTotal > 0
+                ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["エントリー数"]))
+                : "-"}
+              sub={`÷ エントリー ${fmt(displayTotals["エントリー数"])}件`}
+            />
+            <KPICard
+              title="有効エントリー単価"
+              value={displayTotals["有効エントリー数"] > 0 && displayMarketingTotal > 0
+                ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["有効エントリー数"]))
+                : "-"}
+              sub={`÷ 有効 ${fmt(displayTotals["有効エントリー数"])}件`}
             />
           </div>
 
@@ -1091,8 +1180,8 @@ export default function Dashboard() {
                           {pct(row.内定承諾数, row.面談数)}
                         </td>
                         <td className="px-1.5 py-1.5 text-right tabular-nums">
-                          {marketingCostMap[row.month] != null
-                            ? "¥" + fmt(marketingCostMap[row.month])
+                          {selectedMarketingCostMap[row.month] != null
+                            ? "¥" + fmt(selectedMarketingCostMap[row.month])
                             : "-"}
                         </td>
                         <td className="px-1.5 py-1.5 text-right tabular-nums">{cpa(row.month)}</td>
@@ -1127,15 +1216,13 @@ export default function Dashboard() {
                         {pct(displayTotals["内定承諾数"], displayTotals["面談数"])}
                       </td>
                       <td className="px-1.5 py-1.5 text-right tabular-nums">
-                        ¥
-                        {fmt(
-                          displayMetrics.reduce(
-                            (sum, r) => sum + (marketingCostMap[r.month] ?? 0),
-                            0
-                          )
-                        )}
+                        ¥{fmt(displayMarketingTotal)}
                       </td>
-                      <td className="px-1.5 py-1.5 text-right">-</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-orange-600 font-medium">
+                        {displayTotals["エントリー数"] > 0 && displayMarketingTotal > 0
+                          ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["エントリー数"]))
+                          : "-"}
+                      </td>
                     </tr>
 
                     <tr className="border-t border-gray-200 bg-yellow-50/50 font-semibold text-gray-700">
@@ -1152,9 +1239,13 @@ export default function Dashboard() {
                         {pct(grandTotals["内定承諾数"], grandTotals["面談数"])}
                       </td>
                       <td className="px-1.5 py-1.5 text-right tabular-nums">
-                        ¥{fmt(MARKETING_COSTS.reduce((sum, mc) => sum + mc.cost, 0))}
+                        ¥{fmt(selectedMarketingTotal)}
                       </td>
-                      <td className="px-1.5 py-1.5 text-right">-</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-orange-600">
+                        {grandTotals["エントリー数"] > 0 && selectedMarketingTotal > 0
+                          ? "¥" + fmt(Math.round(selectedMarketingTotal / grandTotals["エントリー数"]))
+                          : "-"}
+                      </td>
                     </tr>
                   </>
                 )}
@@ -1315,52 +1406,6 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* ================= マーケ費用・CPA ================= */}
-        <section>
-          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
-            <span className="w-1.5 h-5 bg-orange-500 rounded-full inline-block" />
-            マーケ費用・CPA
-          </h2>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-gray-600 text-left">
-                  <th className="px-4 py-2.5 font-medium">月</th>
-                  <th className="px-3 py-2.5 font-medium text-right">マーケ費用</th>
-                  <th className="px-3 py-2.5 font-medium text-right">エントリー数</th>
-                  <th className="px-3 py-2.5 font-medium text-right">CPA</th>
-                  <th className="px-3 py-2.5 font-medium text-right">有効エントリー数</th>
-                  <th className="px-3 py-2.5 font-medium text-right">有効CPA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {MARKETING_COSTS.map((mc, i) => {
-                  const row = data?.monthlyMetrics.find((m) => m.month === mc.month);
-                  const entries = row?.エントリー数 ?? 0;
-                  const validEntries = row?.有効エントリー数 ?? 0;
-                  return (
-                    <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-800">{mc.month}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">¥{fmt(mc.cost)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{fmt(entries)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums font-medium text-orange-600">
-                        {entries > 0 && mc.cost > 0
-                          ? "¥" + fmt(Math.round(mc.cost / entries))
-                          : "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{fmt(validEntries)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums font-medium text-orange-600">
-                        {validEntries > 0 && mc.cost > 0
-                          ? "¥" + fmt(Math.round(mc.cost / validEntries))
-                          : "-"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
       </main>
 
       <footer className="bg-white border-t border-gray-200 mt-8 py-4 text-center text-xs text-gray-400">
