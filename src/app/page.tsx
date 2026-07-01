@@ -658,6 +658,8 @@ export default function Dashboard() {
   const [selectedStaff, setSelectedStaff] = useState("全体");
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
+  // プロフィールセクション専用の流入経路フィルター
+  const [profileSource, setProfileSource] = useState<string>("全体");
 
   const fetchData = useCallback(async () => {
     try {
@@ -944,19 +946,15 @@ export default function Dashboard() {
 
   const displayProfileNonFood = useMemo((): ProfileGroup | undefined => {
     if (!data) return undefined;
-    if (selectedSources.length === 0) return data.profileNonFood;
-    const bySource = data.profileNonFoodBySource ?? {};
-    const groups = selectedSources.map(s => bySource[s]).filter(Boolean) as ProfileGroup[];
-    return groups.length > 0 ? mergeProfileGroups(groups) : data.profileNonFood;
-  }, [data, selectedSources]);
+    if (profileSource === "全体") return data.profileNonFood;
+    return (data.profileNonFoodBySource ?? {})[profileSource] ?? data.profileNonFood;
+  }, [data, profileSource]);
 
   const displayProfileFood = useMemo((): ProfileGroup | undefined => {
     if (!data) return undefined;
-    if (selectedSources.length === 0) return data.profileFood;
-    const bySource = data.profileFoodBySource ?? {};
-    const groups = selectedSources.map(s => bySource[s]).filter(Boolean) as ProfileGroup[];
-    return groups.length > 0 ? mergeProfileGroups(groups) : data.profileFood;
-  }, [data, selectedSources]);
+    if (profileSource === "全体") return data.profileFood;
+    return (data.profileFoodBySource ?? {})[profileSource] ?? data.profileFood;
+  }, [data, profileSource]);
 
   // 売上見込み合計（流入経路フィルター × 期間フィルター）
   const displayRevenueForecast = useMemo(() => {
@@ -1164,13 +1162,27 @@ export default function Dashboard() {
 
         {/* ================= プロフィール分析 ================= */}
         <section>
-          <h2 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span className="w-1.5 h-5 bg-purple-500 rounded-full inline-block" />
-            エントリー者プロフィール
-            {selectedSources.length > 0 && (
-              <span className="text-xs font-normal text-purple-500 ml-1">（{selectedSources.join("・")}）</span>
-            )}
-          </h2>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+              <span className="w-1.5 h-5 bg-purple-500 rounded-full inline-block" />
+              エントリー者プロフィール
+            </h2>
+            <div className="flex gap-1.5 flex-wrap">
+              {["全体", ...(data?.sourceList ?? [])].map(src => (
+                <button
+                  key={src}
+                  onClick={() => setProfileSource(src)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    profileSource === src
+                      ? "bg-purple-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-purple-100"
+                  }`}
+                >
+                  {src}
+                </button>
+              ))}
+            </div>
+          </div>
           <ProfileGroupSection group={displayProfileNonFood} label="飲食以外" />
           <div className="mt-6">
             <ProfileGroupSection group={displayProfileFood} label="飲食" />
