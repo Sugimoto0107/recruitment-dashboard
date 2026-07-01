@@ -15,9 +15,9 @@ export interface MonthlyMarketingCost {
 export const MARKETING_COSTS: MonthlyMarketingCost[] = [
   { month: "2025-11", cost: 620000, breakdown: { "DODA Maps": 620000 } },
   { month: "2025-12", cost: 783000, breakdown: { "DODA Maps": 783000 } },
-  { month: "2026-01", cost: 224795, breakdown: { "DODA Maps": 73000, "Meta": 151795 } },
-  { month: "2026-02", cost: 493560, breakdown: { "DODA Maps": 256000, "Meta": 237560 } },
-  { month: "2026-03", cost: 910000, breakdown: { "DODA Maps": 70000, "DODA X": 840000 } },
+  { month: "2026-01", cost: 73000,   breakdown: { "DODA Maps": 73000 } },
+  { month: "2026-02", cost: 407795,  breakdown: { "DODA Maps": 256000, "Meta": 151795 } },
+  { month: "2026-03", cost: 1147560, breakdown: { "DODA Maps": 70000, "DODA X": 840000, "Meta": 237560 } },
   { month: "2026-04", cost: 443000, breakdown: { "DODA Maps": 443000 } },
   { month: "2026-05", cost: 240000, breakdown: { "DODA Maps": 240000 } },
   { month: "2026-06", cost: 615300, breakdown: { "DODA X": 615300 } },
