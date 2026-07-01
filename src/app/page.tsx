@@ -421,34 +421,33 @@ function MultiSelectPills({
 }
 
 // --- 求職者テーブル（共通ヘッダー・行） ---
-const SEEKER_COL_SPAN = 21;
+// 最終結果・承諾・承諾日・入社・入社日を削除 → 比率3列を追加: 計19列
+const SEEKER_COL_SPAN = 19;
 
 function SeekerTableHeader() {
-  const thCls = "px-3 py-2 font-medium whitespace-nowrap bg-gray-50 border-b border-gray-200";
-  const thRCls = thCls + " text-right";
+  const th  = "px-1.5 py-1.5 font-medium bg-gray-50 border-b border-gray-200 leading-tight text-left align-bottom";
+  const thR = "px-1.5 py-1.5 font-medium bg-gray-50 border-b border-gray-200 leading-tight text-right align-bottom";
   return (
-    <tr className="text-gray-600 text-left">
-      <th className={thCls}>氏名</th>
-      <th className={thCls}>流入経路</th>
-      <th className={thCls}>性別</th>
-      <th className={thCls}>最終学歴</th>
-      <th className={thRCls}>転職回数</th>
-      <th className={thCls}>担当者</th>
-      <th className={thCls}>面談日</th>
-      <th className={thCls}>エントリー日</th>
-      <th className={thCls}>最終結果</th>
-      <th className={thRCls}>推薦</th>
-      <th className={thRCls}>面接設定</th>
-      <th className={thRCls}>面接実施</th>
-      <th className={thRCls}>1次通過</th>
-      <th className={thRCls}>2次実施</th>
-      <th className={thRCls}>2次通過</th>
-      <th className={thRCls}>最終実施</th>
-      <th className={thRCls}>内定</th>
-      <th className={thRCls}>承諾</th>
-      <th className={thCls}>承諾日</th>
-      <th className={thRCls}>入社</th>
-      <th className={thCls}>入社日</th>
+    <tr className="text-gray-600 text-[11px]">
+      <th className={th}  style={{ width: 100 }}>氏名</th>
+      <th className={th}  style={{ width: 80  }}>流入<br/>経路</th>
+      <th className={th}  style={{ width: 36  }}>性別</th>
+      <th className={th}  style={{ width: 72  }}>最終<br/>学歴</th>
+      <th className={thR} style={{ width: 38  }}>転職<br/>回数</th>
+      <th className={th}  style={{ width: 60  }}>担当者</th>
+      <th className={th}  style={{ width: 66  }}>面談日</th>
+      <th className={th}  style={{ width: 72  }}>エントリー日</th>
+      <th className={thR} style={{ width: 34  }}>推薦</th>
+      <th className={thR} style={{ width: 36  }}>面接<br/>設定</th>
+      <th className={thR} style={{ width: 36  }}>面接<br/>実施</th>
+      <th className={thR} style={{ width: 36  }}>1次<br/>通過</th>
+      <th className={thR} style={{ width: 36  }}>2次<br/>実施</th>
+      <th className={thR} style={{ width: 36  }}>2次<br/>通過</th>
+      <th className={thR} style={{ width: 36  }}>最終<br/>実施</th>
+      <th className={thR} style={{ width: 34  }}>内定</th>
+      <th className={thR} style={{ width: 52  }}>推薦→<br/>面接率</th>
+      <th className={thR} style={{ width: 52  }}>面接→<br/>1次率</th>
+      <th className={thR} style={{ width: 52  }}>面接→<br/>内定率</th>
     </tr>
   );
 }
@@ -463,36 +462,37 @@ function SeekerTableRows({ rows, label }: { rows: JobSeekerSummary[]; label: str
       </tr>
     );
   }
+  const td  = "px-1.5 py-1.5 text-gray-600 max-w-0 overflow-hidden text-ellipsis whitespace-nowrap";
+  const tdR = "px-1.5 py-1.5 text-right tabular-nums";
+  const tdP = "px-1.5 py-1.5 text-right tabular-nums text-blue-600 font-medium";
   return (
     <>
       <tr>
-        <td colSpan={SEEKER_COL_SPAN} className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-semibold border-t border-blue-100">
+        <td colSpan={SEEKER_COL_SPAN} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-semibold border-t border-blue-100">
           {label}（{fmt(rows.length)}件）
         </td>
       </tr>
       {rows.map((r) => (
-        <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
-          <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{r.name}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.source || "-"}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.gender || "-"}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.education || "-"}</td>
-          <td className="px-3 py-2 text-right tabular-nums text-gray-600">{r.jobChangeCount !== null ? fmt(r.jobChangeCount) : "-"}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.staff || "-"}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">{fmtDate(r.interviewDate)}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.entryDate)}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{r.finalResult || "-"}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.recommendations)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewSettings)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.interviewsConducted)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.firstInterviewPass)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.secondInterviewExecuted)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.secondInterviewPass)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.finalInterviewExecuted)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.offers)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.acceptances)}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.acceptanceDate)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(r.hires)}</td>
-          <td className="px-3 py-2 whitespace-nowrap text-gray-600">{fmtDate(r.hireDate)}</td>
+        <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 text-[11px]">
+          <td className={td + " font-medium text-gray-800"}>{r.name}</td>
+          <td className={td}>{r.source || "-"}</td>
+          <td className={td}>{r.gender || "-"}</td>
+          <td className={td}>{r.education || "-"}</td>
+          <td className={tdR + " text-gray-600"}>{r.jobChangeCount !== null ? r.jobChangeCount : "-"}</td>
+          <td className={td}>{r.staff || "-"}</td>
+          <td className="px-1.5 py-1.5 whitespace-nowrap text-gray-700 font-medium">{fmtDate(r.interviewDate)}</td>
+          <td className="px-1.5 py-1.5 whitespace-nowrap text-gray-600">{fmtDate(r.entryDate)}</td>
+          <td className={tdR}>{r.recommendations}</td>
+          <td className={tdR}>{r.interviewSettings}</td>
+          <td className={tdR}>{r.interviewsConducted}</td>
+          <td className={tdR}>{r.firstInterviewPass}</td>
+          <td className={tdR}>{r.secondInterviewExecuted}</td>
+          <td className={tdR}>{r.secondInterviewPass}</td>
+          <td className={tdR}>{r.finalInterviewExecuted}</td>
+          <td className={tdR}>{r.offers}</td>
+          <td className={tdP}>{pct(r.interviewsConducted, r.recommendations)}</td>
+          <td className={tdP}>{pct(r.firstInterviewPass, r.interviewsConducted)}</td>
+          <td className={tdP}>{pct(r.offers, r.interviewsConducted)}</td>
         </tr>
       ))}
     </>
@@ -554,8 +554,8 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
           {fmt(totalFiltered)} / {fmt(rows.length)} 件
         </span>
       </div>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto max-h-[600px]">
-        <table className="w-full text-xs">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-y-auto max-h-[600px]">
+        <table className="w-full table-fixed text-[11px]">
           <thead className="sticky top-0 z-10">
             <SeekerTableHeader />
           </thead>
