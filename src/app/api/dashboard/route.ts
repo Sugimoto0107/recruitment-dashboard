@@ -66,6 +66,8 @@ function emptyData(): DashboardData {
     salaryRangeData: [],
     profileNonFood: { count: 0, prefectureData: [], ageGroupData: [], salaryRangeData: [], genderData: [], educationData: [], jobChangeData: [] },
     profileFood: { count: 0, prefectureData: [], ageGroupData: [], salaryRangeData: [], genderData: [], educationData: [], jobChangeData: [] },
+    profileNonFoodBySource: {},
+    profileFoodBySource: {},
     applicationFunnel: {
       totalApplications: 0,
       byPhase: {},
@@ -93,6 +95,10 @@ function emptyData(): DashboardData {
     monthlyJoinForecast: [],
     monthlyAcceptancesBySource: {},
     monthlyJoinForecastBySource: {},
+    monthlyAcceptancesByStaff: {},
+    monthlyJoinForecastByStaff: {},
+    monthlyAcceptancesByStaffSource: {},
+    monthlyJoinForecastByStaffSource: {},
   };
 }
 

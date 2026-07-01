@@ -836,36 +836,66 @@ export default function Dashboard() {
   // 流入経路フィルターを適用した内定承諾集計（全体 or ソース別合計）
   const filteredAcceptances = useMemo((): MonthlyAcceptanceData[] => {
     if (!data) return [];
-    if (selectedSources.length === 0) return data.monthlyAcceptances ?? [];
-    const bySource = data.monthlyAcceptancesBySource ?? {};
+    const hasStaff = selectedStaff !== "全体";
+    const hasSources = selectedSources.length > 0;
+
+    if (!hasStaff && !hasSources) return data.monthlyAcceptances ?? [];
+
     const combined = new Map<string, MonthlyAcceptanceData>();
-    for (const src of selectedSources) {
-      for (const m of bySource[src] ?? []) {
+    const merge = (rows: MonthlyAcceptanceData[]) => {
+      for (const m of rows) {
         if (!combined.has(m.month)) combined.set(m.month, { month: m.month, count: 0, revenue: 0 });
         const e = combined.get(m.month)!;
         e.count += m.count;
         e.revenue += m.revenue;
       }
-    }
-    return Array.from(combined.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [data, selectedSources]);
+    };
 
-  // 流入経路フィルターを適用した入社見込み集計
+    if (hasStaff && hasSources) {
+      const byStaffSource = data.monthlyAcceptancesByStaffSource ?? {};
+      const staffSlice = byStaffSource[selectedStaff] ?? {};
+      for (const src of selectedSources) merge(staffSlice[src] ?? []);
+    } else if (hasStaff) {
+      merge((data.monthlyAcceptancesByStaff ?? {})[selectedStaff] ?? []);
+    } else {
+      const bySource = data.monthlyAcceptancesBySource ?? {};
+      for (const src of selectedSources) merge(bySource[src] ?? []);
+    }
+
+    return Array.from(combined.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }, [data, selectedStaff, selectedSources]);
+
+  // 担当者・流入経路フィルターを適用した入社見込み集計
   const filteredJoinForecast = useMemo((): MonthlyJoinForecastData[] => {
     if (!data) return [];
-    if (selectedSources.length === 0) return data.monthlyJoinForecast ?? [];
-    const bySource = data.monthlyJoinForecastBySource ?? {};
+    const hasStaff = selectedStaff !== "全体";
+    const hasSources = selectedSources.length > 0;
+
+    if (!hasStaff && !hasSources) return data.monthlyJoinForecast ?? [];
+
     const combined = new Map<string, MonthlyJoinForecastData>();
-    for (const src of selectedSources) {
-      for (const m of bySource[src] ?? []) {
+    const merge = (rows: MonthlyJoinForecastData[]) => {
+      for (const m of rows) {
         if (!combined.has(m.month)) combined.set(m.month, { month: m.month, count: 0, revenue: 0 });
         const e = combined.get(m.month)!;
         e.count += m.count;
         e.revenue += m.revenue;
       }
+    };
+
+    if (hasStaff && hasSources) {
+      const byStaffSource = data.monthlyJoinForecastByStaffSource ?? {};
+      const staffSlice = byStaffSource[selectedStaff] ?? {};
+      for (const src of selectedSources) merge(staffSlice[src] ?? []);
+    } else if (hasStaff) {
+      merge((data.monthlyJoinForecastByStaff ?? {})[selectedStaff] ?? []);
+    } else {
+      const bySource = data.monthlyJoinForecastBySource ?? {};
+      for (const src of selectedSources) merge(bySource[src] ?? []);
     }
+
     return Array.from(combined.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [data, selectedSources]);
+  }, [data, selectedStaff, selectedSources]);
 
   // 内定承諾日ベース月別チャート（流入経路フィルター連動・全月表示）
   const acceptanceChartData = useMemo((): { month: string; 内定承諾数: number }[] => {
@@ -890,6 +920,43 @@ export default function Dashboard() {
       入社見込み数: lookup.get(month) ?? 0,
     }));
   }, [filteredJoinForecast]);
+
+  // 流入経路フィルターを適用したプロフィールデータ（複数選択時はカウントをマージ）
+  const mergeProfileGroups = (groups: ProfileGroup[]): ProfileGroup => {
+    const mergeDistributions = (dists: ProfileDistribution[][]): ProfileDistribution[] => {
+      const map = new Map<string, number>();
+      for (const dist of dists) for (const d of dist) map.set(d.label, (map.get(d.label) ?? 0) + d.count);
+      const total = Array.from(map.values()).reduce((a, b) => a + b, 0);
+      return Array.from(map.entries())
+        .map(([label, count]) => ({ label, count, percentage: total > 0 ? Math.round(count / total * 1000) / 10 : 0 }))
+        .sort((a, b) => b.count - a.count);
+    };
+    return {
+      count: groups.reduce((s, g) => s + g.count, 0),
+      prefectureData: mergeDistributions(groups.map(g => g.prefectureData)),
+      ageGroupData: mergeDistributions(groups.map(g => g.ageGroupData)),
+      salaryRangeData: mergeDistributions(groups.map(g => g.salaryRangeData)),
+      genderData: mergeDistributions(groups.map(g => g.genderData)),
+      educationData: mergeDistributions(groups.map(g => g.educationData)),
+      jobChangeData: mergeDistributions(groups.map(g => g.jobChangeData)),
+    };
+  };
+
+  const displayProfileNonFood = useMemo((): ProfileGroup | undefined => {
+    if (!data) return undefined;
+    if (selectedSources.length === 0) return data.profileNonFood;
+    const bySource = data.profileNonFoodBySource ?? {};
+    const groups = selectedSources.map(s => bySource[s]).filter(Boolean) as ProfileGroup[];
+    return groups.length > 0 ? mergeProfileGroups(groups) : data.profileNonFood;
+  }, [data, selectedSources]);
+
+  const displayProfileFood = useMemo((): ProfileGroup | undefined => {
+    if (!data) return undefined;
+    if (selectedSources.length === 0) return data.profileFood;
+    const bySource = data.profileFoodBySource ?? {};
+    const groups = selectedSources.map(s => bySource[s]).filter(Boolean) as ProfileGroup[];
+    return groups.length > 0 ? mergeProfileGroups(groups) : data.profileFood;
+  }, [data, selectedSources]);
 
   // 売上見込み合計（流入経路フィルター × 期間フィルター）
   const displayRevenueForecast = useMemo(() => {
@@ -1086,6 +1153,30 @@ export default function Dashboard() {
           ) : null}
         </section>
 
+        {/* ================= 求職者個別 ================= */}
+        <section>
+          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
+            <span className="w-1.5 h-5 bg-pink-500 rounded-full inline-block" />
+            求職者個別の状況
+          </h2>
+          {data ? <JobSeekerTable rows={data.jobSeekerSummaries} /> : null}
+        </section>
+
+        {/* ================= プロフィール分析 ================= */}
+        <section>
+          <h2 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <span className="w-1.5 h-5 bg-purple-500 rounded-full inline-block" />
+            エントリー者プロフィール
+            {selectedSources.length > 0 && (
+              <span className="text-xs font-normal text-purple-500 ml-1">（{selectedSources.join("・")}）</span>
+            )}
+          </h2>
+          <ProfileGroupSection group={displayProfileNonFood} label="飲食以外" />
+          <div className="mt-6">
+            <ProfileGroupSection group={displayProfileFood} label="飲食" />
+          </div>
+        </section>
+
         {/* ================= CA: 求職者対応 ================= */}
         <section>
           <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
@@ -1199,43 +1290,62 @@ export default function Dashboard() {
               value={displayRevenueForecast > 0 ? "¥" + fmt(displayRevenueForecast) : "-"}
               sub="内定承諾日ベース 売上見込み金額合計"
             />
-            <KPICard
-              title="決定原価"
-              value={displayTotals["内定承諾数"] > 0 && displayMarketingTotal > 0
-                ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["内定承諾数"]))
-                : "-"}
-              sub={`マーケ費 ¥${fmt(displayMarketingTotal)} ÷ 承諾 ${fmt(displayTotals["内定承諾数"])}件`}
-            />
-            <KPICard
-              title="原価率"
-              value={displayRevenueForecast > 0 && displayMarketingTotal > 0
-                ? ((displayMarketingTotal / displayRevenueForecast) * 100).toFixed(1) + "%"
-                : "-"}
-              sub={`マーケ費 ÷ 売上見込み`}
-            />
+            {selectedStaff === "全体" ? (
+              <>
+                <KPICard
+                  title="決定原価"
+                  value={displayTotals["内定承諾数"] > 0 && displayMarketingTotal > 0
+                    ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["内定承諾数"]))
+                    : "-"}
+                  sub={`マーケ費 ¥${fmt(displayMarketingTotal)} ÷ 承諾 ${fmt(displayTotals["内定承諾数"])}件`}
+                />
+                <KPICard
+                  title="原価率"
+                  value={displayRevenueForecast > 0 && displayMarketingTotal > 0
+                    ? ((displayMarketingTotal / displayRevenueForecast) * 100).toFixed(1) + "%"
+                    : "-"}
+                  sub={`マーケ費 ÷ 売上見込み`}
+                />
+              </>
+            ) : (
+              <div className="col-span-2 flex items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-400">
+                決定原価・原価率はマーケ費が会社全体のため担当者別では非表示
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
             <KPICard
-              title="面談単価"
-              value={displayTotals["面談数"] > 0 && displayMarketingTotal > 0
-                ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["面談数"]))
+              title="面談実施率"
+              value={displayTotals["エントリー数"] > 0
+                ? ((displayTotals["面談数"] / displayTotals["エントリー数"]) * 100).toFixed(1) + "%"
                 : "-"}
-              sub={`÷ 面談 ${fmt(displayTotals["面談数"])}件`}
+              sub={`面談 ${fmt(displayTotals["面談数"])}件 ÷ エントリー ${fmt(displayTotals["エントリー数"])}件`}
             />
-            <KPICard
-              title="エントリー単価"
-              value={displayTotals["エントリー数"] > 0 && displayMarketingTotal > 0
-                ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["エントリー数"]))
-                : "-"}
-              sub={`÷ エントリー ${fmt(displayTotals["エントリー数"])}件`}
-            />
-            <KPICard
-              title="有効エントリー単価"
-              value={displayTotals["有効エントリー数"] > 0 && displayMarketingTotal > 0
-                ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["有効エントリー数"]))
-                : "-"}
-              sub={`÷ 有効 ${fmt(displayTotals["有効エントリー数"])}件`}
-            />
+            {selectedStaff === "全体" && (
+              <>
+                <KPICard
+                  title="面談単価"
+                  value={displayTotals["面談数"] > 0 && displayMarketingTotal > 0
+                    ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["面談数"]))
+                    : "-"}
+                  sub={`÷ 面談 ${fmt(displayTotals["面談数"])}件`}
+                />
+                <KPICard
+                  title="エントリー単価"
+                  value={displayTotals["エントリー数"] > 0 && displayMarketingTotal > 0
+                    ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["エントリー数"]))
+                    : "-"}
+                  sub={`÷ エントリー ${fmt(displayTotals["エントリー数"])}件`}
+                />
+                <KPICard
+                  title="有効エントリー単価"
+                  value={displayTotals["有効エントリー数"] > 0 && displayMarketingTotal > 0
+                    ? "¥" + fmt(Math.round(displayMarketingTotal / displayTotals["有効エントリー数"]))
+                    : "-"}
+                  sub={`÷ 有効 ${fmt(displayTotals["有効エントリー数"])}件`}
+                />
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
@@ -1522,27 +1632,6 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-        </section>
-
-        {/* ================= 求職者個別 ================= */}
-        <section>
-          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
-            <span className="w-1.5 h-5 bg-pink-500 rounded-full inline-block" />
-            求職者個別の状況
-          </h2>
-          {data ? <JobSeekerTable rows={data.jobSeekerSummaries} /> : null}
-        </section>
-
-        {/* ================= プロフィール分析 ================= */}
-        <section>
-          <h2 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span className="w-1.5 h-5 bg-purple-500 rounded-full inline-block" />
-            エントリー者プロフィール
-          </h2>
-          <ProfileGroupSection group={data?.profileNonFood} label="飲食以外" />
-          <div className="mt-6">
-            <ProfileGroupSection group={data?.profileFood} label="飲食" />
-          </div>
         </section>
 
       </main>

@@ -172,11 +172,18 @@ export interface DashboardData {
   jobSeekerSummaries: JobSeekerSummary[];
   // 発話比率CA 月別・担当者別平均
   monthlySpeakingRatio: MonthlySpeakingRatioData;
-  // 応募管理DBベース: 内定承諾日・入社想定日別集計（全体＋流入経路別）
+  // プロフィール分析 流入経路別
+  profileNonFoodBySource: Record<string, ProfileGroup>;
+  profileFoodBySource: Record<string, ProfileGroup>;
+  // 応募管理DBベース: 内定承諾日・入社想定日別集計（全体＋流入経路別＋担当者別＋2D）
   monthlyAcceptances: MonthlyAcceptanceData[];
   monthlyJoinForecast: MonthlyJoinForecastData[];
   monthlyAcceptancesBySource: Record<string, MonthlyAcceptanceData[]>;
   monthlyJoinForecastBySource: Record<string, MonthlyJoinForecastData[]>;
+  monthlyAcceptancesByStaff: Record<string, MonthlyAcceptanceData[]>;
+  monthlyJoinForecastByStaff: Record<string, MonthlyJoinForecastData[]>;
+  monthlyAcceptancesByStaffSource: Record<string, Record<string, MonthlyAcceptanceData[]>>;
+  monthlyJoinForecastByStaffSource: Record<string, Record<string, MonthlyJoinForecastData[]>>;
 }
 
 // =============================================================
@@ -944,6 +951,15 @@ function getAppSource(app: RawApplication, seekerSourceMap: Map<string, string>)
   return "未設定";
 }
 
+// 応募から紐づく求職者の担当者を取得（最初の seekerId を優先）
+function getAppStaff(app: RawApplication, seekerStaffMap: Map<string, string>): string {
+  for (const id of app.seekerIds) {
+    const staff = seekerStaffMap.get(id);
+    if (staff) return staff;
+  }
+  return "未設定";
+}
+
 export function computeMonthlyAcceptances(apps: RawApplication[]): MonthlyAcceptanceData[] {
   const map = new Map<string, MonthlyAcceptanceData>();
   for (const app of apps) {
@@ -970,29 +986,62 @@ export function computeMonthlyJoinForecast(apps: RawApplication[]): MonthlyJoinF
   return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
 }
 
-// 流入経路別の内定承諾・入社見込み集計
-function buildMonthDataBySource<T extends { month: string; count: number; revenue: number }>(
+// 任意のキー抽出関数で月別集計（流入経路別・担当者別の共通実装）
+function buildMonthDataByKeyFn<T extends { month: string; count: number; revenue: number }>(
   apps: RawApplication[],
-  seekerSourceMap: Map<string, string>,
+  getKey: (app: RawApplication) => string,
   getDateKey: (app: RawApplication) => string | null,
   makeEmpty: (month: string) => T
 ): Record<string, T[]> {
-  const bySource: Record<string, Map<string, T>> = {};
+  const byKey: Record<string, Map<string, T>> = {};
   for (const app of apps) {
     const date = getDateKey(app);
     if (!date) continue;
     const month = toMonthKey(date);
-    const source = getAppSource(app, seekerSourceMap);
-    if (!bySource[source]) bySource[source] = new Map();
-    const srcMap = bySource[source];
-    if (!srcMap.has(month)) srcMap.set(month, makeEmpty(month));
-    const m = srcMap.get(month)!;
+    const key = getKey(app);
+    if (!byKey[key]) byKey[key] = new Map();
+    const keyMap = byKey[key];
+    if (!keyMap.has(month)) keyMap.set(month, makeEmpty(month));
+    const m = keyMap.get(month)!;
     m.count++;
     if (app.revenue) m.revenue += app.revenue;
   }
   const result: Record<string, T[]> = {};
-  for (const [src, map] of Object.entries(bySource)) {
-    result[src] = Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+  for (const [k, map] of Object.entries(byKey)) {
+    result[k] = Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }
+  return result;
+}
+
+// 2D集計（担当者 × 流入経路）
+function buildMonthDataBy2D<T extends { month: string; count: number; revenue: number }>(
+  apps: RawApplication[],
+  getKey1: (app: RawApplication) => string,
+  getKey2: (app: RawApplication) => string,
+  getDateKey: (app: RawApplication) => string | null,
+  makeEmpty: (month: string) => T
+): Record<string, Record<string, T[]>> {
+  const by2D: Record<string, Record<string, Map<string, T>>> = {};
+  for (const app of apps) {
+    const date = getDateKey(app);
+    if (!date) continue;
+    const month = toMonthKey(date);
+    const k1 = getKey1(app);
+    const k2 = getKey2(app);
+    if (!by2D[k1]) by2D[k1] = {};
+    if (!by2D[k1][k2]) by2D[k1][k2] = new Map();
+    const map = by2D[k1][k2];
+    if (!map.has(month)) map.set(month, makeEmpty(month));
+    const m = map.get(month)!;
+    m.count++;
+    if (app.revenue) m.revenue += app.revenue;
+  }
+  const result: Record<string, Record<string, T[]>> = {};
+  for (const [k1, inner] of Object.entries(by2D)) {
+    result[k1] = {};
+    for (const [k2, map] of Object.entries(inner)) {
+      result[k1][k2] = Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+    }
   }
   return result;
 }
@@ -1001,8 +1050,9 @@ export function computeMonthlyAcceptancesBySource(
   apps: RawApplication[],
   seekerSourceMap: Map<string, string>
 ): Record<string, MonthlyAcceptanceData[]> {
-  return buildMonthDataBySource(
-    apps, seekerSourceMap,
+  return buildMonthDataByKeyFn(
+    apps,
+    (a) => getAppSource(a, seekerSourceMap),
     (a) => a.acceptanceDate,
     (month) => ({ month, count: 0, revenue: 0 })
   );
@@ -1012,8 +1062,61 @@ export function computeMonthlyJoinForecastBySource(
   apps: RawApplication[],
   seekerSourceMap: Map<string, string>
 ): Record<string, MonthlyJoinForecastData[]> {
-  return buildMonthDataBySource(
-    apps, seekerSourceMap,
+  return buildMonthDataByKeyFn(
+    apps,
+    (a) => getAppSource(a, seekerSourceMap),
+    (a) => a.expectedJoinDate,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
+}
+
+export function computeMonthlyAcceptancesByStaff(
+  apps: RawApplication[],
+  seekerStaffMap: Map<string, string>
+): Record<string, MonthlyAcceptanceData[]> {
+  return buildMonthDataByKeyFn(
+    apps,
+    (a) => getAppStaff(a, seekerStaffMap),
+    (a) => a.acceptanceDate,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
+}
+
+export function computeMonthlyJoinForecastByStaff(
+  apps: RawApplication[],
+  seekerStaffMap: Map<string, string>
+): Record<string, MonthlyJoinForecastData[]> {
+  return buildMonthDataByKeyFn(
+    apps,
+    (a) => getAppStaff(a, seekerStaffMap),
+    (a) => a.expectedJoinDate,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
+}
+
+export function computeMonthlyAcceptancesByStaffSource(
+  apps: RawApplication[],
+  seekerStaffMap: Map<string, string>,
+  seekerSourceMap: Map<string, string>
+): Record<string, Record<string, MonthlyAcceptanceData[]>> {
+  return buildMonthDataBy2D(
+    apps,
+    (a) => getAppStaff(a, seekerStaffMap),
+    (a) => getAppSource(a, seekerSourceMap),
+    (a) => a.acceptanceDate,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
+}
+
+export function computeMonthlyJoinForecastByStaffSource(
+  apps: RawApplication[],
+  seekerStaffMap: Map<string, string>,
+  seekerSourceMap: Map<string, string>
+): Record<string, Record<string, MonthlyJoinForecastData[]>> {
+  return buildMonthDataBy2D(
+    apps,
+    (a) => getAppStaff(a, seekerStaffMap),
+    (a) => getAppSource(a, seekerSourceMap),
     (a) => a.expectedJoinDate,
     (month) => ({ month, count: 0, revenue: 0 })
   );
@@ -1106,6 +1209,14 @@ export function processAllData(
   const salaryRangeData = computeSalaryDistribution(seekers);
   const profileNonFood = buildProfileGroup(seekers.filter((s) => !s.isFood));
   const profileFood = buildProfileGroup(seekers.filter((s) => s.isFood));
+
+  const profileNonFoodBySource: Record<string, ProfileGroup> = {};
+  const profileFoodBySource: Record<string, ProfileGroup> = {};
+  for (const src of sourceList) {
+    const srcSeekers = seekers.filter(s => (s.source || "未設定") === src);
+    profileNonFoodBySource[src] = buildProfileGroup(srcSeekers.filter(s => !s.isFood));
+    profileFoodBySource[src] = buildProfileGroup(srcSeekers.filter(s => s.isFood));
+  }
   const applicationFunnel = computeApplicationFunnel(applications);
   const inProgress = computeInProgress(
     applications,
@@ -1119,8 +1230,15 @@ export function processAllData(
   const seekerSourceMap = new Map<string, string>(
     seekers.map(s => [s.id, s.source || "未設定"])
   );
+  const seekerStaffMap = new Map<string, string>(
+    seekers.map(s => [s.id, s.staff || "未設定"])
+  );
   const monthlyAcceptancesBySource = computeMonthlyAcceptancesBySource(applications, seekerSourceMap);
   const monthlyJoinForecastBySource = computeMonthlyJoinForecastBySource(applications, seekerSourceMap);
+  const monthlyAcceptancesByStaff = computeMonthlyAcceptancesByStaff(applications, seekerStaffMap);
+  const monthlyJoinForecastByStaff = computeMonthlyJoinForecastByStaff(applications, seekerStaffMap);
+  const monthlyAcceptancesByStaffSource = computeMonthlyAcceptancesByStaffSource(applications, seekerStaffMap, seekerSourceMap);
+  const monthlyJoinForecastByStaffSource = computeMonthlyJoinForecastByStaffSource(applications, seekerStaffMap, seekerSourceMap);
 
   return {
     isConnected,
@@ -1145,6 +1263,8 @@ export function processAllData(
     salaryRangeData,
     profileNonFood,
     profileFood,
+    profileNonFoodBySource,
+    profileFoodBySource,
     applicationFunnel,
     inProgress,
     jobSeekerSummaries,
@@ -1153,5 +1273,9 @@ export function processAllData(
     monthlyJoinForecast,
     monthlyAcceptancesBySource,
     monthlyJoinForecastBySource,
+    monthlyAcceptancesByStaff,
+    monthlyJoinForecastByStaff,
+    monthlyAcceptancesByStaffSource,
+    monthlyJoinForecastByStaffSource,
   };
 }
