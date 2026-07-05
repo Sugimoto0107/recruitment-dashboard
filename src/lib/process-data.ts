@@ -69,6 +69,17 @@ export interface ApplicationFunnel {
   declines: number;
 }
 
+// --- 内定到達有無による候補者比較（応募管理ベースで候補者単位に集計）---
+export interface OfferGroupStat {
+  count: number;
+  avgRecommendations: number;
+  avgFirstInterview: number;
+}
+export interface OfferComparison {
+  offer: OfferGroupStat;
+  noOffer: OfferGroupStat;
+}
+
 // --- 選考中・内定承諾待ちのリストアイテム ---
 export interface InProgressItem {
   applicationId: string;
@@ -167,6 +178,7 @@ export interface DashboardData {
   profileFood: ProfileGroup;
   // 応募ファネル
   applicationFunnel: ApplicationFunnel;
+  offerComparison: OfferComparison;
   inProgress: InProgressBuckets;
   // 求職者個別
   jobSeekerSummaries: JobSeekerSummary[];
@@ -707,6 +719,45 @@ function buildProfileGroup(ss: RawJobSeeker[]): ProfileGroup {
 // =============================================================
 // 応募ファネル
 // =============================================================
+// 内定到達有無による候補者比較（応募管理を候補者単位に集計）
+// ※求職者管理のロールアップ（推薦社数など）は未整備のため使わず、応募から直接集計してファネルと整合させる
+export function computeOfferComparison(
+  apps: RawApplication[]
+): OfferComparison {
+  const PASSED_FIRST = new Set([
+    "一次面接","不採用（一次面接NG）","二次面接","不採用（二次面接NG）",
+    "最終面接","不採用（最終面接NG）","内定","内定承諾","入社",
+  ]);
+  const PASSED_OFFER = new Set(["内定","内定承諾","入社"]);
+
+  // 候補者(seeker)単位に: 推薦数(rec) / 一次面接実施数(first) / 内定到達(offer)
+  const bySeeker = new Map<string, { rec: number; first: number; offer: boolean }>();
+  for (const a of apps) {
+    const seekerId = a.seekerIds[0];
+    if (!seekerId) continue; // 求職者未紐付けの応募は除外
+    let s = bySeeker.get(seekerId);
+    if (!s) { s = { rec: 0, first: 0, offer: false }; bySeeker.set(seekerId, s); }
+    s.rec += 1;
+    if (a.firstInterviewDate || (a.phase && PASSED_FIRST.has(a.phase))) s.first += 1;
+    if (a.offerDate || (a.phase && PASSED_OFFER.has(a.phase))) s.offer = true;
+  }
+
+  const agg = (want: boolean): OfferGroupStat => {
+    let count = 0, sumRec = 0, sumFirst = 0;
+    for (const v of bySeeker.values()) {
+      if (v.offer !== want) continue;
+      count++; sumRec += v.rec; sumFirst += v.first;
+    }
+    return {
+      count,
+      avgRecommendations: count ? sumRec / count : 0,
+      avgFirstInterview: count ? sumFirst / count : 0,
+    };
+  };
+
+  return { offer: agg(true), noOffer: agg(false) };
+}
+
 export function computeApplicationFunnel(
   apps: RawApplication[]
 ): ApplicationFunnel {
@@ -1218,6 +1269,7 @@ export function processAllData(
     profileFoodBySource[src] = buildProfileGroup(srcSeekers.filter(s => s.isFood));
   }
   const applicationFunnel = computeApplicationFunnel(applications);
+  const offerComparison = computeOfferComparison(applications);
   const inProgress = computeInProgress(
     applications,
     enrichedSeekers,
@@ -1266,6 +1318,7 @@ export function processAllData(
     profileNonFoodBySource,
     profileFoodBySource,
     applicationFunnel,
+    offerComparison,
     inProgress,
     jobSeekerSummaries,
     monthlySpeakingRatio,

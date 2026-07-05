@@ -82,6 +82,10 @@ function emptyData(): DashboardData {
       interviewNg: 0,
       declines: 0,
     },
+    offerComparison: {
+      offer: { count: 0, avgRecommendations: 0, avgFirstInterview: 0 },
+      noOffer: { count: 0, avgRecommendations: 0, avgFirstInterview: 0 },
+    },
     inProgress: {
       書類選考: [],
       一次面接: [],

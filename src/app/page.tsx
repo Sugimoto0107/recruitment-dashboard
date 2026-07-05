@@ -12,6 +12,8 @@ import type {
   InProgressBuckets,
   InProgressItem,
   JobSeekerSummary,
+  OfferComparison,
+  OfferGroupStat,
   MonthlySpeakingRatioData,
   MonthlyAcceptanceData,
   MonthlyJoinForecastData,
@@ -278,8 +280,54 @@ function InProgressPhaseCard({
   );
 }
 
+function OfferComparisonCard({
+  tone,
+  title,
+  subtitle,
+  stat,
+}: {
+  tone: "offer" | "noOffer";
+  title: string;
+  subtitle: string;
+  stat: OfferGroupStat;
+}) {
+  const isOffer = tone === "offer";
+  const bar = isOffer ? "border-t-emerald-500" : "border-t-amber-500";
+  const chip = isOffer ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50";
+  const num = isOffer ? "text-emerald-600" : "text-amber-600";
+  const chipLabel = isOffer ? "内定を獲得" : "内定なし";
+  return (
+    <div className={`bg-white rounded-xl shadow-sm border border-gray-100 border-t-[3px] ${bar} p-4`}>
+      <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-full px-2.5 py-1 ${chip}`}>
+        ● {chipLabel}
+      </span>
+      <h4 className="text-sm font-semibold text-gray-800 mt-2.5">
+        {title} <span className="text-gray-400 font-normal text-xs">n={stat.count}</span>
+      </h4>
+      <p className="text-[11px] text-gray-400 mb-3.5">{subtitle}</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-gray-50 rounded-lg border border-gray-100 p-3">
+          <p className="text-[10px] text-gray-500 mb-1.5 leading-tight">平均 推薦社数</p>
+          <p className={`text-2xl font-bold tabular-nums leading-none ${num}`}>
+            {stat.avgRecommendations.toFixed(1)}
+            <span className="text-xs font-semibold text-gray-400 ml-0.5">社</span>
+          </p>
+        </div>
+        <div className="bg-gray-50 rounded-lg border border-gray-100 p-3">
+          <p className="text-[10px] text-gray-500 mb-1.5 leading-tight">平均 1次面接<br />実施数</p>
+          <p className={`text-2xl font-bold tabular-nums leading-none ${num}`}>
+            {stat.avgFirstInterview.toFixed(1)}
+            <span className="text-xs font-semibold text-gray-400 ml-0.5">社</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ApplicationFunnelSection({
   funnel,
+  comparison,
   inProgress,
 }: {
   funnel: {
@@ -291,6 +339,7 @@ function ApplicationFunnelSection({
     acceptances: number;
     joins: number;
   };
+  comparison: OfferComparison;
   inProgress: InProgressBuckets;
 }) {
   const base = Math.max(funnel.recommended, 1);
@@ -307,34 +356,52 @@ function ApplicationFunnelSection({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-gray-600 text-left">
-              <th className="px-4 py-2.5 font-medium">ステップ</th>
-              <th className="px-3 py-2.5 font-medium text-right">件数</th>
-              <th className="px-3 py-2.5 font-medium text-right">推薦比 (%)</th>
-              <th className="px-3 py-2.5 font-medium text-right">前段比 (%)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => {
-              const prev = i === 0 ? row.count : rows[i - 1].count;
-              return (
-                <tr key={row.label} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-2.5 font-medium text-gray-800">{row.label}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmt(row.count)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-blue-600">
-                    {pct(row.count, base)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-500">
-                    {i === 0 ? "-" : pct(row.count, prev)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* 左: ファネル表（コンパクト・左詰） / 右: 内定到達有無の比較カード */}
+      <div className="flex flex-col lg:flex-row lg:items-start gap-5">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto lg:shrink-0">
+          <table className="text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-gray-600 text-left">
+                <th className="px-3 py-1.5 font-medium">ステップ</th>
+                <th className="px-3 py-1.5 font-medium text-right">件数</th>
+                <th className="px-3 py-1.5 font-medium text-right">推薦比 (%)</th>
+                <th className="px-3 py-1.5 font-medium text-right">前段比 (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => {
+                const prev = i === 0 ? row.count : rows[i - 1].count;
+                return (
+                  <tr key={row.label} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-3 py-1.5 font-medium text-gray-800 whitespace-nowrap">{row.label}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{fmt(row.count)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-blue-600">
+                      {pct(row.count, base)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                      {i === 0 ? "-" : pct(row.count, prev)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 w-full">
+          <OfferComparisonCard
+            tone="offer"
+            title="内定をもらえた候補者"
+            subtitle="内定・承諾・入社に到達した人"
+            stat={comparison.offer}
+          />
+          <OfferComparisonCard
+            tone="noOffer"
+            title="内定をもらえない候補者"
+            subtitle="推薦されたが内定に至らなかった人"
+            stat={comparison.noOffer}
+          />
+        </div>
       </div>
 
       <div>
@@ -1147,7 +1214,7 @@ export default function Dashboard() {
             応募ファネル（エントリー以降の歩留）
           </h2>
           {data ? (
-            <ApplicationFunnelSection funnel={data.applicationFunnel} inProgress={data.inProgress} />
+            <ApplicationFunnelSection funnel={data.applicationFunnel} comparison={data.offerComparison} inProgress={data.inProgress} />
           ) : null}
         </section>
 
