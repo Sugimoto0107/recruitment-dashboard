@@ -728,9 +728,13 @@ export default function Dashboard() {
   // プロフィールセクション専用の流入経路フィルター
   const [profileSource, setProfileSource] = useState<string>("全体");
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
+      // 「更新」ボタン押下時はキャッシュを破棄してからNotionを取り直す
+      if (forceRefresh) {
+        await fetch("/api/refresh", { method: "POST", cache: "no-store" }).catch(() => {});
+      }
       const [res, rakudenRes] = await Promise.all([
         fetch("/api/dashboard", { cache: "no-store" }),
         fetch("/api/rakuden", { cache: "no-store" }),
@@ -1106,7 +1110,7 @@ export default function Dashboard() {
           <p className="text-red-600 font-semibold mb-2">エラー</p>
           <p className="text-gray-600 text-sm">{error}</p>
           <button
-            onClick={fetchData}
+            onClick={() => fetchData(true)}
             className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition"
           >
             再読み込み
@@ -1132,7 +1136,7 @@ export default function Dashboard() {
           <h1 className="text-lg font-bold text-gray-900">採用ダッシュボード</h1>
           <div className="flex items-center gap-3">
             <button
-              onClick={fetchData}
+              onClick={() => fetchData(true)}
               className="text-xs text-blue-500 hover:text-blue-700 transition"
             >
               更新
