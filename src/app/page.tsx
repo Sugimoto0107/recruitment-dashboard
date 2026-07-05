@@ -1031,6 +1031,23 @@ export default function Dashboard() {
     return months.reduce((sum: number, m: MonthlyAcceptanceData) => sum + m.revenue, 0);
   }, [filteredAcceptances, selectedMonths]);
 
+  // 売上見込み（入社想定日ベース）をFYで分割（7月決算: FY25=2025/8〜2026/7, FY26=2026/8〜2027/7）
+  const salesForecastByFY = useMemo(() => {
+    const inFY = (month: string, startYear: number) =>
+      month >= `${startYear}-08` && month <= `${startYear + 1}-07`;
+    let fy25 = 0, fy26 = 0, total = 0;
+    for (const m of filteredJoinForecast) {
+      total += m.revenue;
+      if (inFY(m.month, 2025)) fy25 += m.revenue;
+      else if (inFY(m.month, 2026)) fy26 += m.revenue;
+    }
+    return { fy25, fy26, total };
+  }, [filteredJoinForecast]);
+
+  function scrollToSection(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function toggleSource(s: string) {
     setSelectedSources((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
@@ -1079,7 +1096,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-[1440px] mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-4 pt-3 flex items-center justify-between">
           <h1 className="text-lg font-bold text-gray-900">採用ダッシュボード</h1>
           <div className="flex items-center gap-3">
             <button
@@ -1093,171 +1110,30 @@ export default function Dashboard() {
             </span>
           </div>
         </div>
+        <nav className="max-w-[1440px] mx-auto px-4 pt-2 pb-2.5 flex gap-2 overflow-x-auto">
+          <button onClick={() => scrollToSection("ca")} className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition">
+            <span className="text-[10px] text-gray-400 font-bold mr-1">CA</span>求職者対応
+          </button>
+          <button onClick={() => scrollToSection("funnel")} className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition">
+            応募ファネル
+          </button>
+          <button onClick={() => scrollToSection("status")} className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition">
+            求職者個別
+          </button>
+          <button onClick={() => scrollToSection("ra")} className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-transparent hover:bg-blue-100 transition">
+            <span className="text-[10px] text-blue-500 font-bold mr-1">RA</span>求人開拓
+          </button>
+          <button onClick={() => scrollToSection("profile")} className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition">
+            エントリー者プロフィール
+          </button>
+        </nav>
       </header>
 
       <main className="max-w-[1440px] mx-auto px-4 py-6 space-y-8">
         {data && !data.isConnected && <NotConnectedBanner />}
 
-        {/* ================= RA: 求人開拓 ================= */}
-        <section>
-          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
-            <span className="w-1.5 h-5 bg-blue-500 rounded-full inline-block" />
-            求人開拓（RA）
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <StatusBreakdownCard
-              title="契約企業数"
-              total={data?.companySummary.total ?? 0}
-              byStatus={data?.companySummary.byStatus ?? {}}
-              highlight="契約"
-            />
-            <StatusBreakdownCard
-              title="求人数（飲食以外）"
-              subtitle="求人案件管理 DB"
-              total={data?.jobSummary.shokuhinIgai.total ?? 0}
-              byStatus={data?.jobSummary.shokuhinIgai.byStatus ?? {}}
-              highlight="公開中"
-            />
-            <StatusBreakdownCard
-              title="求人数（飲食）"
-              subtitle="求人案件管理(飲食) DB"
-              total={data?.jobSummary.shokuhin.total ?? 0}
-              byStatus={data?.jobSummary.shokuhin.byStatus ?? {}}
-              highlight="公開中"
-            />
-          </div>
-
-          {/* 合算サマリ (薄め) */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-3 mt-3 flex flex-wrap items-center gap-4 text-sm">
-            <span className="text-xs text-gray-500 uppercase tracking-wide">求人合計</span>
-            <span className="font-bold text-gray-900 text-lg tabular-nums">
-              {fmt(data?.jobSummary.total ?? 0)}
-            </span>
-            <span className="text-xs text-gray-400">
-              飲食以外 {fmt(data?.jobSummary.shokuhinIgai.total ?? 0)} ／ 飲食 {fmt(data?.jobSummary.shokuhin.total ?? 0)}
-            </span>
-            {Object.entries(data?.jobSummary.byStatus ?? {})
-              .filter(([, n]) => n > 0)
-              .sort((a, b) => b[1] - a[1])
-              .map(([status, count]) => (
-                <span key={status} className="text-xs text-gray-600">
-                  {status}: <span className="tabular-nums font-medium text-gray-800">{fmt(count)}</span>
-                </span>
-              ))}
-          </div>
-
-          {/* 月別求人獲得推移 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              月別求人獲得件数（Notionへの登録日ベース）
-            </h3>
-            {data && Object.keys(data.jobSummary.monthlyAcquisition).length > 0 ? (() => {
-              const igai = data.jobSummary.shokuhinIgai.monthlyAcquisition;
-              const shokuhin = data.jobSummary.shokuhin.monthlyAcquisition;
-              const allMonths = Array.from(new Set([...Object.keys(igai), ...Object.keys(shokuhin)])).sort();
-              const chartData = allMonths.map((month) => ({
-                month,
-                飲食以外: igai[month] ?? 0,
-                飲食: shokuhin[month] ?? 0,
-              }));
-              return (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
-                    <Tooltip formatter={(v) => [`${v}件`]} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="飲食以外" fill="#3B82F6" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="飲食" fill="#10B981" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              );
-            })() : (
-              <p className="text-xs text-gray-400">データがありません。</p>
-            )}
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              公開中求人の職種コード別内訳（飲食以外＋飲食 合算）
-            </h3>
-            {data && Object.keys(data.jobSummary.publishedByJobCode).length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                {Object.entries(data.jobSummary.publishedByJobCode)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([code, count]) => (
-                    <div
-                      key={code}
-                      className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
-                    >
-                      <span className="text-gray-700 truncate">{code}</span>
-                      <span className="tabular-nums font-semibold text-gray-900 ml-2">
-                        {fmt(count)}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400">
-                職種コードのデータがありません（Notion 側に「職種コード」を入力すると表示されます）。
-              </p>
-            )}
-          </div>
-
-        </section>
-
-        {/* ================= 応募ファネル ================= */}
-        <section>
-          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
-            <span className="w-1.5 h-5 bg-cyan-500 rounded-full inline-block" />
-            応募ファネル（エントリー以降の歩留）
-          </h2>
-          {data ? (
-            <ApplicationFunnelSection funnel={data.applicationFunnel} comparison={data.offerComparison} inProgress={data.inProgress} />
-          ) : null}
-        </section>
-
-        {/* ================= 求職者個別 ================= */}
-        <section>
-          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
-            <span className="w-1.5 h-5 bg-pink-500 rounded-full inline-block" />
-            求職者個別の状況
-          </h2>
-          {data ? <JobSeekerTable rows={data.jobSeekerSummaries} /> : null}
-        </section>
-
-        {/* ================= プロフィール分析 ================= */}
-        <section>
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-              <span className="w-1.5 h-5 bg-purple-500 rounded-full inline-block" />
-              エントリー者プロフィール
-            </h2>
-            <div className="flex gap-1.5 flex-wrap">
-              {["全体", ...(data?.sourceList ?? [])].map(src => (
-                <button
-                  key={src}
-                  onClick={() => setProfileSource(src)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    profileSource === src
-                      ? "bg-purple-600 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-purple-100"
-                  }`}
-                >
-                  {src}
-                </button>
-              ))}
-            </div>
-          </div>
-          <ProfileGroupSection group={displayProfileNonFood} label="飲食以外" />
-          <div className="mt-6">
-            <ProfileGroupSection group={displayProfileFood} label="飲食" />
-          </div>
-        </section>
-
         {/* ================= CA: 求職者対応 ================= */}
-        <section>
+        <section id="ca" className="scroll-mt-28">
           <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span className="w-1.5 h-5 bg-green-500 rounded-full inline-block" />
             求職者対応（CA）
@@ -1362,13 +1238,27 @@ export default function Dashboard() {
             />
           </div>
 
+          {/* 売上見込み（FY別・入社想定日ベース）※7月決算 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
+            <KPICard
+              title="売上見込み FY25"
+              value={salesForecastByFY.fy25 > 0 ? "¥" + fmt(salesForecastByFY.fy25) : "-"}
+              sub="入社想定日 2025/8〜2026/7"
+            />
+            <KPICard
+              title="売上見込み FY26"
+              value={salesForecastByFY.fy26 > 0 ? "¥" + fmt(salesForecastByFY.fy26) : "-"}
+              sub="入社想定日 2026/8〜2027/7"
+            />
+            <KPICard
+              title="売上見込み 累計"
+              value={salesForecastByFY.total > 0 ? "¥" + fmt(salesForecastByFY.total) : "-"}
+              sub="FY25 + FY26（入社想定日ベース）"
+            />
+          </div>
+
           {/* マーケ費用KPIカード（フィルターに連動） */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-3">
-            <KPICard
-              title="売上見込み"
-              value={displayRevenueForecast > 0 ? "¥" + fmt(displayRevenueForecast) : "-"}
-              sub="内定承諾日ベース 売上見込み金額合計"
-            />
             {selectedStaff === "全体" ? (
               <>
                 <KPICard
@@ -1712,6 +1602,165 @@ export default function Dashboard() {
             </div>
           )}
         </section>
+
+        {/* ================= 応募ファネル ================= */}
+        <section id="funnel" className="scroll-mt-28">
+          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
+            <span className="w-1.5 h-5 bg-cyan-500 rounded-full inline-block" />
+            応募ファネル（エントリー以降の歩留）
+          </h2>
+          {data ? (
+            <ApplicationFunnelSection funnel={data.applicationFunnel} comparison={data.offerComparison} inProgress={data.inProgress} />
+          ) : null}
+        </section>
+
+        {/* ================= 求職者個別 ================= */}
+        <section id="status" className="scroll-mt-28">
+          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
+            <span className="w-1.5 h-5 bg-pink-500 rounded-full inline-block" />
+            求職者個別の状況
+          </h2>
+          {data ? <JobSeekerTable rows={data.jobSeekerSummaries} /> : null}
+        </section>
+
+        {/* ================= RA: 求人開拓 ================= */}
+        <section id="ra" className="scroll-mt-28">
+          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
+            <span className="w-1.5 h-5 bg-blue-500 rounded-full inline-block" />
+            求人開拓（RA）
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <StatusBreakdownCard
+              title="契約企業数"
+              total={data?.companySummary.total ?? 0}
+              byStatus={data?.companySummary.byStatus ?? {}}
+              highlight="契約"
+            />
+            <StatusBreakdownCard
+              title="求人数（飲食以外）"
+              subtitle="求人案件管理 DB"
+              total={data?.jobSummary.shokuhinIgai.total ?? 0}
+              byStatus={data?.jobSummary.shokuhinIgai.byStatus ?? {}}
+              highlight="公開中"
+            />
+            <StatusBreakdownCard
+              title="求人数（飲食）"
+              subtitle="求人案件管理(飲食) DB"
+              total={data?.jobSummary.shokuhin.total ?? 0}
+              byStatus={data?.jobSummary.shokuhin.byStatus ?? {}}
+              highlight="公開中"
+            />
+          </div>
+
+          {/* 合算サマリ (薄め) */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-3 mt-3 flex flex-wrap items-center gap-4 text-sm">
+            <span className="text-xs text-gray-500 uppercase tracking-wide">求人合計</span>
+            <span className="font-bold text-gray-900 text-lg tabular-nums">
+              {fmt(data?.jobSummary.total ?? 0)}
+            </span>
+            <span className="text-xs text-gray-400">
+              飲食以外 {fmt(data?.jobSummary.shokuhinIgai.total ?? 0)} ／ 飲食 {fmt(data?.jobSummary.shokuhin.total ?? 0)}
+            </span>
+            {Object.entries(data?.jobSummary.byStatus ?? {})
+              .filter(([, n]) => n > 0)
+              .sort((a, b) => b[1] - a[1])
+              .map(([status, count]) => (
+                <span key={status} className="text-xs text-gray-600">
+                  {status}: <span className="tabular-nums font-medium text-gray-800">{fmt(count)}</span>
+                </span>
+              ))}
+          </div>
+
+          {/* 月別求人獲得推移 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              月別求人獲得件数（Notionへの登録日ベース）
+            </h3>
+            {data && Object.keys(data.jobSummary.monthlyAcquisition).length > 0 ? (() => {
+              const igai = data.jobSummary.shokuhinIgai.monthlyAcquisition;
+              const shokuhin = data.jobSummary.shokuhin.monthlyAcquisition;
+              const allMonths = Array.from(new Set([...Object.keys(igai), ...Object.keys(shokuhin)])).sort();
+              const chartData = allMonths.map((month) => ({
+                month,
+                飲食以外: igai[month] ?? 0,
+                飲食: shokuhin[month] ?? 0,
+              }));
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                    <Tooltip formatter={(v) => [`${v}件`]} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="飲食以外" fill="#3B82F6" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="飲食" fill="#10B981" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            })() : (
+              <p className="text-xs text-gray-400">データがありません。</p>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              公開中求人の職種コード別内訳（飲食以外＋飲食 合算）
+            </h3>
+            {data && Object.keys(data.jobSummary.publishedByJobCode).length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                {Object.entries(data.jobSummary.publishedByJobCode)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([code, count]) => (
+                    <div
+                      key={code}
+                      className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
+                    >
+                      <span className="text-gray-700 truncate">{code}</span>
+                      <span className="tabular-nums font-semibold text-gray-900 ml-2">
+                        {fmt(count)}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">
+                職種コードのデータがありません（Notion 側に「職種コード」を入力すると表示されます）。
+              </p>
+            )}
+          </div>
+
+        </section>
+
+        {/* ================= プロフィール分析 ================= */}
+        <section id="profile" className="scroll-mt-28">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+              <span className="w-1.5 h-5 bg-purple-500 rounded-full inline-block" />
+              エントリー者プロフィール
+            </h2>
+            <div className="flex gap-1.5 flex-wrap">
+              {["全体", ...(data?.sourceList ?? [])].map(src => (
+                <button
+                  key={src}
+                  onClick={() => setProfileSource(src)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    profileSource === src
+                      ? "bg-purple-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-purple-100"
+                  }`}
+                >
+                  {src}
+                </button>
+              ))}
+            </div>
+          </div>
+          <ProfileGroupSection group={displayProfileNonFood} label="飲食以外" />
+          <div className="mt-6">
+            <ProfileGroupSection group={displayProfileFood} label="飲食" />
+          </div>
+        </section>
+
 
       </main>
 
