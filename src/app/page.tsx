@@ -966,6 +966,38 @@ export default function Dashboard() {
     return Array.from(combined.values()).sort((a, b) => a.month.localeCompare(b.month));
   }, [data, selectedStaff, selectedSources]);
 
+  // 売上見込みFY分割用（入社想定日優先・無ければ内定承諾日で概算）フィルター連動
+  const filteredForFY = useMemo((): MonthlyJoinForecastData[] => {
+    if (!data) return [];
+    const hasStaff = selectedStaff !== "全体";
+    const hasSources = selectedSources.length > 0;
+
+    if (!hasStaff && !hasSources) return data.monthlyForFY ?? [];
+
+    const combined = new Map<string, MonthlyJoinForecastData>();
+    const merge = (rows: MonthlyJoinForecastData[]) => {
+      for (const m of rows) {
+        if (!combined.has(m.month)) combined.set(m.month, { month: m.month, count: 0, revenue: 0 });
+        const e = combined.get(m.month)!;
+        e.count += m.count;
+        e.revenue += m.revenue;
+      }
+    };
+
+    if (hasStaff && hasSources) {
+      const byStaffSource = data.monthlyForFYByStaffSource ?? {};
+      const staffSlice = byStaffSource[selectedStaff] ?? {};
+      for (const src of selectedSources) merge(staffSlice[src] ?? []);
+    } else if (hasStaff) {
+      merge((data.monthlyForFYByStaff ?? {})[selectedStaff] ?? []);
+    } else {
+      const bySource = data.monthlyForFYBySource ?? {};
+      for (const src of selectedSources) merge(bySource[src] ?? []);
+    }
+
+    return Array.from(combined.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }, [data, selectedStaff, selectedSources]);
+
   // 内定承諾日ベース月別チャート（流入経路フィルター連動・全月表示）
   const acceptanceChartData = useMemo((): { month: string; 内定承諾数: number }[] => {
     const last = filteredAcceptances.length > 0
@@ -1036,13 +1068,13 @@ export default function Dashboard() {
     const inFY = (month: string, startYear: number) =>
       month >= `${startYear}-08` && month <= `${startYear + 1}-07`;
     let fy25 = 0, fy26 = 0, total = 0;
-    for (const m of filteredJoinForecast) {
+    for (const m of filteredForFY) {
       total += m.revenue;
       if (inFY(m.month, 2025)) fy25 += m.revenue;
       else if (inFY(m.month, 2026)) fy26 += m.revenue;
     }
     return { fy25, fy26, total };
-  }, [filteredJoinForecast]);
+  }, [filteredForFY]);
 
   function scrollToSection(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1253,7 +1285,7 @@ export default function Dashboard() {
             <KPICard
               title="売上見込み 累計"
               value={salesForecastByFY.total > 0 ? "¥" + fmt(salesForecastByFY.total) : "-"}
-              sub="FY25 + FY26（入社想定日ベース）"
+              sub="FY25＋FY26／入社想定日・無ければ承諾日で概算"
             />
           </div>
 

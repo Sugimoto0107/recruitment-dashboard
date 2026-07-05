@@ -196,6 +196,11 @@ export interface DashboardData {
   monthlyJoinForecastByStaff: Record<string, MonthlyJoinForecastData[]>;
   monthlyAcceptancesByStaffSource: Record<string, Record<string, MonthlyAcceptanceData[]>>;
   monthlyJoinForecastByStaffSource: Record<string, Record<string, MonthlyJoinForecastData[]>>;
+  // 売上見込みFY分割用（入社想定日優先・無ければ内定承諾日で概算）
+  monthlyForFY: MonthlyJoinForecastData[];
+  monthlyForFYBySource: Record<string, MonthlyJoinForecastData[]>;
+  monthlyForFYByStaff: Record<string, MonthlyJoinForecastData[]>;
+  monthlyForFYByStaffSource: Record<string, Record<string, MonthlyJoinForecastData[]>>;
 }
 
 // =============================================================
@@ -1173,6 +1178,65 @@ export function computeMonthlyJoinForecastByStaffSource(
   );
 }
 
+// -------------------------------------------------------------
+// 売上見込みFY分割用: 入社想定日を優先し、無い場合のみ内定承諾日で概算
+// （入社見込みチャートは従来どおり入社想定日ベースのまま。FYカード専用の系列）
+// -------------------------------------------------------------
+const fyDateKey = (a: RawApplication): string | null =>
+  a.expectedJoinDate ?? a.acceptanceDate;
+
+export function computeMonthlyForFY(apps: RawApplication[]): MonthlyJoinForecastData[] {
+  const map = new Map<string, MonthlyJoinForecastData>();
+  for (const app of apps) {
+    const date = fyDateKey(app);
+    if (!date) continue;
+    const month = toMonthKey(date);
+    if (!map.has(month)) map.set(month, { month, count: 0, revenue: 0 });
+    const m = map.get(month)!;
+    m.count++;
+    if (app.revenue) m.revenue += app.revenue;
+  }
+  return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+export function computeMonthlyForFYBySource(
+  apps: RawApplication[],
+  seekerSourceMap: Map<string, string>
+): Record<string, MonthlyJoinForecastData[]> {
+  return buildMonthDataByKeyFn(
+    apps,
+    (a) => getAppSource(a, seekerSourceMap),
+    fyDateKey,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
+}
+
+export function computeMonthlyForFYByStaff(
+  apps: RawApplication[],
+  seekerStaffMap: Map<string, string>
+): Record<string, MonthlyJoinForecastData[]> {
+  return buildMonthDataByKeyFn(
+    apps,
+    (a) => getAppStaff(a, seekerStaffMap),
+    fyDateKey,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
+}
+
+export function computeMonthlyForFYByStaffSource(
+  apps: RawApplication[],
+  seekerStaffMap: Map<string, string>,
+  seekerSourceMap: Map<string, string>
+): Record<string, Record<string, MonthlyJoinForecastData[]>> {
+  return buildMonthDataBy2D(
+    apps,
+    (a) => getAppStaff(a, seekerStaffMap),
+    (a) => getAppSource(a, seekerSourceMap),
+    fyDateKey,
+    (month) => ({ month, count: 0, revenue: 0 })
+  );
+}
+
 // =============================================================
 // 全体集計
 // =============================================================
@@ -1291,6 +1355,10 @@ export function processAllData(
   const monthlyJoinForecastByStaff = computeMonthlyJoinForecastByStaff(applications, seekerStaffMap);
   const monthlyAcceptancesByStaffSource = computeMonthlyAcceptancesByStaffSource(applications, seekerStaffMap, seekerSourceMap);
   const monthlyJoinForecastByStaffSource = computeMonthlyJoinForecastByStaffSource(applications, seekerStaffMap, seekerSourceMap);
+  const monthlyForFY = computeMonthlyForFY(applications);
+  const monthlyForFYBySource = computeMonthlyForFYBySource(applications, seekerSourceMap);
+  const monthlyForFYByStaff = computeMonthlyForFYByStaff(applications, seekerStaffMap);
+  const monthlyForFYByStaffSource = computeMonthlyForFYByStaffSource(applications, seekerStaffMap, seekerSourceMap);
 
   return {
     isConnected,
@@ -1330,5 +1398,9 @@ export function processAllData(
     monthlyJoinForecastByStaff,
     monthlyAcceptancesByStaffSource,
     monthlyJoinForecastByStaffSource,
+    monthlyForFY,
+    monthlyForFYBySource,
+    monthlyForFYByStaff,
+    monthlyForFYByStaffSource,
   };
 }

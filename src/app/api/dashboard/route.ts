@@ -103,6 +103,10 @@ function emptyData(): DashboardData {
     monthlyJoinForecastByStaff: {},
     monthlyAcceptancesByStaffSource: {},
     monthlyJoinForecastByStaffSource: {},
+    monthlyForFY: [],
+    monthlyForFYBySource: {},
+    monthlyForFYByStaff: {},
+    monthlyForFYByStaffSource: {},
   };
 }
 
