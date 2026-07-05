@@ -1285,7 +1285,7 @@ export default function Dashboard() {
             <KPICard
               title="売上見込み 累計"
               value={salesForecastByFY.total > 0 ? "¥" + fmt(salesForecastByFY.total) : "-"}
-              sub="FY25＋FY26／入社想定日・無ければ承諾日で概算"
+              sub="FY25＋FY26／入社想定日・無ければ承諾月の翌月で概算"
             />
           </div>
 

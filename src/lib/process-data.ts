@@ -1179,11 +1179,23 @@ export function computeMonthlyJoinForecastByStaffSource(
 }
 
 // -------------------------------------------------------------
-// 売上見込みFY分割用: 入社想定日を優先し、無い場合のみ内定承諾日で概算
+// 売上見込みFY分割用: 入社想定日を優先し、無い場合のみ内定承諾「月の翌月」で概算
 // （入社見込みチャートは従来どおり入社想定日ベースのまま。FYカード専用の系列）
 // -------------------------------------------------------------
-const fyDateKey = (a: RawApplication): string | null =>
-  a.expectedJoinDate ?? a.acceptanceDate;
+// "YYYY-MM-.." の翌月1日 "YYYY-MM-01" を返す
+function nextMonthFirstDay(dateStr: string): string {
+  const y = Number(dateStr.slice(0, 4));
+  const m = Number(dateStr.slice(5, 7)); // 1-12
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}-01`;
+}
+
+const fyDateKey = (a: RawApplication): string | null => {
+  if (a.expectedJoinDate) return a.expectedJoinDate;
+  if (a.acceptanceDate) return nextMonthFirstDay(a.acceptanceDate); // 承諾月の翌月で概算
+  return null;
+};
 
 export function computeMonthlyForFY(apps: RawApplication[]): MonthlyJoinForecastData[] {
   const map = new Map<string, MonthlyJoinForecastData>();
