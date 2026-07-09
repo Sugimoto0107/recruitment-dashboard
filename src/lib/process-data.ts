@@ -101,6 +101,7 @@ export interface InProgressBuckets {
 export interface JobSeekerSummary {
   id: string;
   name: string;
+  age: number | null;
   candidateNo: string;
   staff: string;
   entryDate: string | null;
@@ -908,6 +909,7 @@ export function buildJobSeekerSummaries(
     .map((s) => ({
       id: s.id,
       name: s.name || "(未設定)",
+      age: s.age,
       candidateNo: s.candidateNo,
       staff: s.staff,
       entryDate: s.entryDate,

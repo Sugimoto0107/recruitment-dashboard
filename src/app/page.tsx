@@ -496,7 +496,7 @@ function SeekerTableHeader() {
   const thR = "px-1.5 py-1.5 font-medium bg-gray-50 border-b border-gray-200 leading-tight text-right align-bottom";
   return (
     <tr className="text-gray-600 text-[11px]">
-      <th className={th + " sticky left-0 z-20 border-r border-gray-200"} style={{ width: 100 }}>氏名</th>
+      <th className={th + " sticky left-0 z-20 border-r border-gray-200"} style={{ width: 132 }}>氏名</th>
       <th className={th}  style={{ width: 80  }}>流入<br/>経路</th>
       <th className={th}  style={{ width: 36  }}>性別</th>
       <th className={th}  style={{ width: 72  }}>最終<br/>学歴</th>
@@ -541,7 +541,10 @@ function SeekerTableRows({ rows, label }: { rows: JobSeekerSummary[]; label: str
       </tr>
       {rows.map((r) => (
         <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 text-[11px]">
-          <td className={td + " font-medium text-gray-800 sticky left-0 z-10 bg-white border-r border-gray-100"}>{r.name}</td>
+          <td className={td + " font-medium text-gray-800 sticky left-0 z-10 bg-white border-r border-gray-100"}>
+            {r.name}
+            {r.age !== null && <span className="ml-1 text-gray-400 font-normal">{r.age}歳</span>}
+          </td>
           <td className={td}>{r.source || "-"}</td>
           <td className={td}>{r.gender || "-"}</td>
           <td className={td}>{r.education || "-"}</td>
