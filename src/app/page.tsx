@@ -137,24 +137,45 @@ function KPICard({ title, value, sub }: { title: string; value: string | number;
 }
 
 // --- ステータス別カード ---
+// --- Notion 元データへのリンクバッジ ---
+function NotionLink({ href, className = "" }: { href: string; className?: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title="Notionの元データを開く"
+      className={`inline-flex items-center gap-0.5 text-[10px] font-medium text-gray-400 hover:text-blue-600 transition-colors ${className}`}
+    >
+      Notion<span aria-hidden>↗</span>
+    </a>
+  );
+}
+
 function StatusBreakdownCard({
   title,
   total,
   byStatus,
   highlight,
   subtitle,
+  href,
 }: {
   title: string;
   total: number;
   byStatus: Record<string, number>;
   highlight?: string;
   subtitle?: string;
+  href?: string;
 }) {
   const entries = Object.entries(byStatus).sort((a, b) => b[1] - a[1]);
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
       <div className="flex items-baseline justify-between gap-2 mb-1">
-        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{title}</p>
+        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1.5">
+          {title}
+          {href && <NotionLink href={href} />}
+        </p>
         {subtitle && <p className="text-[10px] text-gray-400">{subtitle}</p>}
       </div>
       <p className="text-3xl font-bold text-gray-900 mb-3">{fmt(total)}</p>
@@ -408,6 +429,7 @@ function ApplicationFunnelSection({
         <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
           <span className="w-1 h-4 bg-yellow-500 rounded-full inline-block" />
           選考中の方
+          <NotionLink href="https://www.notion.so/388e7839dbed4aa6a18f38ea75334502?v=0525dedd94844c0a8dcae6009ea9a6c7" />
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           <InProgressPhaseCard title="書類選考" items={inProgress.書類選考} accentClass="bg-blue-400" />
@@ -1658,6 +1680,7 @@ export default function Dashboard() {
           <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span className="w-1.5 h-5 bg-pink-500 rounded-full inline-block" />
             求職者個別の状況
+            <NotionLink href="https://www.notion.so/3b6e7cb438cd40d4bb14137ae78fe45f?v=06d74de16f1e4e3293a6fab7c37d209f" />
           </h2>
           {data ? <JobSeekerTable rows={data.jobSeekerSummaries} /> : null}
         </section>
@@ -1674,6 +1697,7 @@ export default function Dashboard() {
               total={data?.companySummary.total ?? 0}
               byStatus={data?.companySummary.byStatus ?? {}}
               highlight="契約"
+              href="https://www.notion.so/0a88d1f8a9c54d88a9b0733c11bcc995?v=af42648610924b2db9fb919af5e776b2"
             />
             <StatusBreakdownCard
               title="求人数（飲食以外）"
@@ -1681,6 +1705,7 @@ export default function Dashboard() {
               total={data?.jobSummary.shokuhinIgai.total ?? 0}
               byStatus={data?.jobSummary.shokuhinIgai.byStatus ?? {}}
               highlight="公開中"
+              href="https://www.notion.so/3d52c1ff3f534d309fbf409300c9a3c4?v=d4ab68c43e684e2eaf263938229dbf34"
             />
             <StatusBreakdownCard
               title="求人数（飲食）"
@@ -1688,6 +1713,7 @@ export default function Dashboard() {
               total={data?.jobSummary.shokuhin.total ?? 0}
               byStatus={data?.jobSummary.shokuhin.byStatus ?? {}}
               highlight="公開中"
+              href="https://www.notion.so/3007868b517083748b0701f36df5fa6e?v=ae47868b5170839191dc08f7315d4750"
             />
           </div>
 
