@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from "react";
 import { CA_METRIC_KEYS, CAMetricKey } from "@/lib/types";
 import { MARKETING_COSTS, getMarketingCostMap } from "@/lib/marketing-data";
 import type {
@@ -137,8 +137,16 @@ function KPICard({ title, value, sub }: { title: string; value: string | number;
 }
 
 // --- ステータス別カード ---
-// --- Notion 元データへのリンクバッジ ---
-function NotionLink({ href, className = "" }: { href: string; className?: string }) {
+// --- Notion 元データへのハイパーリンク（項目名そのものをリンク化） ---
+function NotionLink({
+  href,
+  children,
+  className = "",
+}: {
+  href: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <a
       href={href}
@@ -146,9 +154,10 @@ function NotionLink({ href, className = "" }: { href: string; className?: string
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
       title="Notionの元データを開く"
-      className={`inline-flex items-center gap-0.5 text-[10px] font-medium text-gray-400 hover:text-blue-600 transition-colors ${className}`}
+      className={`group inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline decoration-blue-300 hover:decoration-blue-600 decoration-1 underline-offset-2 cursor-pointer transition-colors ${className}`}
     >
-      Notion<span aria-hidden>↗</span>
+      {children}
+      <span aria-hidden className="text-[0.85em] opacity-70 group-hover:opacity-100 no-underline">↗</span>
     </a>
   );
 }
@@ -172,9 +181,12 @@ function StatusBreakdownCard({
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
       <div className="flex items-baseline justify-between gap-2 mb-1">
-        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1.5">
-          {title}
-          {href && <NotionLink href={href} />}
+        <p className="text-xs font-medium uppercase tracking-wide flex items-center gap-1.5">
+          {href ? (
+            <NotionLink href={href}>{title}</NotionLink>
+          ) : (
+            <span className="text-gray-500">{title}</span>
+          )}
         </p>
         {subtitle && <p className="text-[10px] text-gray-400">{subtitle}</p>}
       </div>
@@ -428,8 +440,9 @@ function ApplicationFunnelSection({
       <div>
         <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
           <span className="w-1 h-4 bg-yellow-500 rounded-full inline-block" />
-          選考中の方
-          <NotionLink href="https://www.notion.so/388e7839dbed4aa6a18f38ea75334502?v=0525dedd94844c0a8dcae6009ea9a6c7" />
+          <NotionLink href="https://www.notion.so/388e7839dbed4aa6a18f38ea75334502?v=0525dedd94844c0a8dcae6009ea9a6c7">
+            選考中の方
+          </NotionLink>
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           <InProgressPhaseCard title="書類選考" items={inProgress.書類選考} accentClass="bg-blue-400" />
@@ -1679,8 +1692,9 @@ export default function Dashboard() {
         <section id="status" className="scroll-mt-28">
           <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span className="w-1.5 h-5 bg-pink-500 rounded-full inline-block" />
-            求職者個別の状況
-            <NotionLink href="https://www.notion.so/3b6e7cb438cd40d4bb14137ae78fe45f?v=06d74de16f1e4e3293a6fab7c37d209f" />
+            <NotionLink href="https://www.notion.so/3b6e7cb438cd40d4bb14137ae78fe45f?v=06d74de16f1e4e3293a6fab7c37d209f">
+              求職者個別の状況
+            </NotionLink>
           </h2>
           {data ? <JobSeekerTable rows={data.jobSeekerSummaries} /> : null}
         </section>
