@@ -178,6 +178,68 @@ function NotionLink({ href, children, className = "" }: { href: string; children
   );
 }
 
+// --- リンク集データ ---
+const LINK_GROUPS: { title: string; accent: string; links: { label: string; href: string }[] }[] = [
+  {
+    title: "社内資料",
+    accent: "bg-emerald-500",
+    links: [
+      { label: "入社時研修資料", href: "https://drive.google.com/drive/folders/1rupA_VnCFZTPEMhOFYebhw76YRq0faDn" },
+      { label: "トークスクリプト・メール雛形", href: "https://drive.google.com/drive/folders/1duAUFXKDP2Q1gmZCrRmzOxb0xEtIE5gp" },
+      { label: "人材紹介の一連の流れ", href: "https://docs.google.com/spreadsheets/d/1GG5oRLUbcnvPXny22jL6gD-P6Ep_MNLt/edit?usp=drive_link&ouid=105969036123651383261&rtpof=true&sd=true" },
+    ],
+  },
+  {
+    title: "求人媒体・スカウト",
+    accent: "bg-amber-500",
+    links: [
+      { label: "DODA Maps", href: "https://maps.doda.jp/maps/user/php/login.php?WCLNO=11865" },
+      { label: "DODA X", href: "https://search.doda-x.jp/" },
+      { label: "ジョブミル", href: "https://hokiraon.app.jobmiru.cloud/auth/signin" },
+    ],
+  },
+  {
+    title: "管理画面・ATS",
+    accent: "bg-blue-500",
+    links: [
+      { label: "各種ATS（契約企業一覧）", href: "https://www.notion.so/0a88d1f8a9c54d88a9b0733c11bcc995?v=af42648610924b2db9fb919af5e776b2" },
+      { label: "RECROOTS 入稿管理画面", href: "https://recroots.vercel.app/admin" },
+    ],
+  },
+];
+
+// --- リンク集セクション ---
+function LinkCollectionSection() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {LINK_GROUPS.map((group) => (
+        <div key={group.title} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2 mb-3">
+            <span className={`w-1 h-4 rounded-full inline-block ${group.accent}`} />
+            {group.title}
+          </p>
+          <ul className="space-y-2.5">
+            {group.links.map((l) => (
+              <li key={l.href}>
+                <a
+                  href={l.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`${l.label}を開く`}
+                  className="group flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 hover:underline decoration-blue-300 underline-offset-2 cursor-pointer transition-colors"
+                >
+                  <span className="truncate">{l.label}</span>
+                  <span aria-hidden className="text-xs opacity-60 group-hover:opacity-100 shrink-0">↗</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StatusBreakdownCard({
   title,
   total,
@@ -1235,6 +1297,9 @@ export default function Dashboard() {
           <button onClick={() => scrollToSection("profile")} className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition">
             エントリー者プロフィール
           </button>
+          <button onClick={() => scrollToSection("links")} className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition">
+            リンク集
+          </button>
         </nav>
       </header>
 
@@ -1886,6 +1951,14 @@ export default function Dashboard() {
           </div>
         </section>
 
+        {/* ================= リンク集 ================= */}
+        <section id="links" className="scroll-mt-28">
+          <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
+            <span className="w-1.5 h-5 bg-gray-500 rounded-full inline-block" />
+            リンク集
+          </h2>
+          <LinkCollectionSection />
+        </section>
 
       </main>
 
