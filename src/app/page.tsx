@@ -137,6 +137,11 @@ function KPICard({ title, value, sub }: { title: string; value: string | number;
 }
 
 // --- ステータス別カード ---
+// --- Notion ページIDから個別ページURLを生成 ---
+function notionPageUrl(id: string): string {
+  return `https://www.notion.so/${id.replace(/-/g, "")}`;
+}
+
 // --- Notion 元データへのハイパーリンク（項目名そのものをリンク化） ---
 function NotionLink({
   href,
@@ -576,8 +581,16 @@ function SeekerTableRows({ rows, label }: { rows: JobSeekerSummary[]; label: str
       </tr>
       {rows.map((r) => (
         <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50 text-[11px]">
-          <td className={td + " font-medium text-gray-800 sticky left-0 z-10 bg-white border-r border-gray-100"}>
-            {r.name}
+          <td className={td + " font-medium sticky left-0 z-10 bg-white border-r border-gray-100"}>
+            <a
+              href={notionPageUrl(r.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Notionの求職者ページを開く"
+              className="text-gray-800 hover:text-blue-600 hover:underline decoration-blue-400 underline-offset-2 cursor-pointer"
+            >
+              {r.name}
+            </a>
             {r.age !== null && <span className="ml-1 text-gray-400 font-normal">{r.age}歳</span>}
           </td>
           <td className={td}>{r.source || "-"}</td>
