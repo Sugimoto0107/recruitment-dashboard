@@ -195,7 +195,6 @@ const LINK_GROUPS: { title: string; accent: string; links: { label: string; href
     links: [
       { label: "DODA Maps", href: "https://maps.doda.jp/maps/user/php/login.php?WCLNO=11865" },
       { label: "DODA X", href: "https://search.doda-x.jp/" },
-      { label: "ジョブミル", href: "https://hokiraon.app.jobmiru.cloud/auth/signin" },
     ],
   },
   {
@@ -203,6 +202,7 @@ const LINK_GROUPS: { title: string; accent: string; links: { label: string; href
     accent: "bg-blue-500",
     links: [
       { label: "各種ATS（契約企業一覧）", href: "https://www.notion.so/0a88d1f8a9c54d88a9b0733c11bcc995?v=af42648610924b2db9fb919af5e776b2" },
+      { label: "ジョブミル", href: "https://hokiraon.app.jobmiru.cloud/auth/signin" },
       { label: "RECROOTS 入稿管理画面", href: "https://recroots.vercel.app/admin" },
     ],
   },
