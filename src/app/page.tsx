@@ -142,14 +142,16 @@ function notionPageUrl(id: string): string {
   return `https://www.notion.so/${id.replace(/-/g, "")}`;
 }
 
-// --- Notion 元データへのハイパーリンク（項目名そのものをリンク化） ---
-function NotionLink({
+// --- 外部リソースへのハイパーリンク（テキストそのものをリンク化） ---
+function HyperLink({
   href,
   children,
+  hint = "リンクを開く",
   className = "",
 }: {
   href: string;
   children: ReactNode;
+  hint?: string;
   className?: string;
 }) {
   return (
@@ -158,12 +160,21 @@ function NotionLink({
       target="_blank"
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
-      title="Notionの元データを開く"
+      title={hint}
       className={`group inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline decoration-blue-300 hover:decoration-blue-600 decoration-1 underline-offset-2 cursor-pointer transition-colors ${className}`}
     >
       {children}
       <span aria-hidden className="text-[0.85em] opacity-70 group-hover:opacity-100 no-underline">↗</span>
     </a>
+  );
+}
+
+// --- Notion 元データへのハイパーリンク ---
+function NotionLink({ href, children, className = "" }: { href: string; children: ReactNode; className?: string }) {
+  return (
+    <HyperLink href={href} hint="Notionの元データを開く" className={className}>
+      {children}
+    </HyperLink>
   );
 }
 
@@ -174,6 +185,7 @@ function StatusBreakdownCard({
   highlight,
   subtitle,
   href,
+  extraLinks,
 }: {
   title: string;
   total: number;
@@ -181,6 +193,7 @@ function StatusBreakdownCard({
   highlight?: string;
   subtitle?: string;
   href?: string;
+  extraLinks?: { label: string; href: string; hint?: string }[];
 }) {
   const entries = Object.entries(byStatus).sort((a, b) => b[1] - a[1]);
   return (
@@ -195,6 +208,15 @@ function StatusBreakdownCard({
         </p>
         {subtitle && <p className="text-[10px] text-gray-400">{subtitle}</p>}
       </div>
+      {extraLinks && extraLinks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2 text-[11px] normal-case">
+          {extraLinks.map((l) => (
+            <HyperLink key={l.href} href={l.href} hint={l.hint ?? "Googleドライブを開く"}>
+              {l.label}
+            </HyperLink>
+          ))}
+        </div>
+      )}
       <p className="text-3xl font-bold text-gray-900 mb-3">{fmt(total)}</p>
       <div className="space-y-1.5">
         {entries.map(([status, count]) => (
@@ -1708,6 +1730,13 @@ export default function Dashboard() {
             <NotionLink href="https://www.notion.so/3b6e7cb438cd40d4bb14137ae78fe45f?v=06d74de16f1e4e3293a6fab7c37d209f">
               求職者個別の状況
             </NotionLink>
+            <HyperLink
+              href="https://drive.google.com/drive/folders/1pG60mOOK1I8qvObj1owLtxGCNtROj2ZH"
+              hint="各種書類・面談メモ（Googleドライブ）を開く"
+              className="text-xs font-normal"
+            >
+              各種書類・面談メモ
+            </HyperLink>
           </h2>
           {data ? <JobSeekerTable rows={data.jobSeekerSummaries} /> : null}
         </section>
@@ -1725,6 +1754,10 @@ export default function Dashboard() {
               byStatus={data?.companySummary.byStatus ?? {}}
               highlight="契約"
               href="https://www.notion.so/0a88d1f8a9c54d88a9b0733c11bcc995?v=af42648610924b2db9fb919af5e776b2"
+              extraLinks={[
+                { label: "飲食以外の申込書", href: "https://drive.google.com/drive/folders/1c1QqDal5_sX4pk1PTCplqJa8I5sjJ8et" },
+                { label: "飲食の申込書", href: "https://drive.google.com/drive/folders/1bo8YC4mcRbMVgWYwJpLRx9N0PVgit8gy" },
+              ]}
             />
             <StatusBreakdownCard
               title="求人数（飲食以外）"
