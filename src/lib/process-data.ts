@@ -26,7 +26,21 @@ export interface MonthlyCAMetrics {
   内定数: number;
   内定承諾数: number;
   入社数: number;
+  // 推薦以降の各フェーズの「ユニーク実人数」（応募件数に対する重複を除いた求職者数）
+  unique?: Record<string, number>;
 }
+
+// 推薦以降のフェーズキー（ユニーク人数を併記する対象）
+export const RECOMMEND_ONWARD_KEYS = [
+  "推薦社数",
+  "面接設定数",
+  "面接実施数",
+  "一次面接通過数",
+  "二次面接通過数",
+  "内定数",
+  "内定承諾数",
+  "入社数",
+] as const;
 
 // --- プロフィール分布 ---
 export interface ProfileDistribution {
@@ -67,6 +81,16 @@ export interface ApplicationFunnel {
   documentNg: number;
   interviewNg: number;
   declines: number;
+  // 各フェーズの「ユニーク実人数」（重複を除いた求職者数）
+  unique: {
+    recommended: number;
+    firstInterview: number;
+    secondInterview: number;
+    finalInterview: number;
+    offers: number;
+    acceptances: number;
+    joins: number;
+  };
 }
 
 // --- 内定到達有無による候補者比較（応募管理ベースで候補者単位に集計）---
@@ -231,6 +255,7 @@ function emptyMetrics(month: string): MonthlyCAMetrics {
     内定数: 0,
     内定承諾数: 0,
     入社数: 0,
+    unique: {},
   };
 }
 
@@ -238,18 +263,30 @@ function emptyMetrics(month: string): MonthlyCAMetrics {
 // 月別 CA 指標
 // =============================================================
 export function computeMonthlyMetrics(
-  seekers: RawJobSeeker[]
+  seekers: RawJobSeeker[],
+  apps: RawApplication[] = []
 ): MonthlyCAMetrics[] {
   const monthMap = new Map<string, MonthlyCAMetrics>();
+  // 月別・フェーズ別の「重複を除いた求職者ID集合」
+  const uniqueSets = new Map<string, Record<string, Set<string>>>();
+  const seekerById = new Map(seekers.map((s) => [s.id, s]));
+
+  const ensure = (monthKey: string): MonthlyCAMetrics => {
+    if (!monthMap.has(monthKey)) {
+      monthMap.set(monthKey, emptyMetrics(monthKey));
+      const sets: Record<string, Set<string>> = {};
+      for (const k of RECOMMEND_ONWARD_KEYS) sets[k] = new Set<string>();
+      uniqueSets.set(monthKey, sets);
+    }
+    return monthMap.get(monthKey)!;
+  };
 
   for (const s of seekers) {
     if (!s.entryDate) continue;
 
     const monthKey = toMonthKey(s.entryDate);
-    if (!monthMap.has(monthKey)) {
-      monthMap.set(monthKey, emptyMetrics(monthKey));
-    }
-    const m = monthMap.get(monthKey)!;
+    const m = ensure(monthKey);
+    const sets = uniqueSets.get(monthKey)!;
 
     m.エントリー数 += 1;
     if (!s.isInvalid) {
@@ -258,7 +295,7 @@ export function computeMonthlyMetrics(
     if (s.interviewDone) {
       m.面談数 += 1;
     }
-    m.推薦社数 += s.recommendations;
+    // 推薦社数は応募管理DB(apps)から別途集計する（求職者管理DBの手入力は使わない）
     m.面接設定数 += s.interviewSettings;
     m.面接実施数 += s.interviewsConducted;
     m.一次面接通過数 += s.firstInterviewPass;
@@ -266,14 +303,46 @@ export function computeMonthlyMetrics(
     m.内定数 += s.offers;
     m.内定承諾数 += s.acceptances;
     m.入社数 += s.hires;
+
+    // 推薦以降（推薦除く）のユニーク実人数: 各フィールド>0の求職者を1人としてカウント
+    if (s.interviewSettings > 0) sets.面接設定数.add(s.id);
+    if (s.interviewsConducted > 0) sets.面接実施数.add(s.id);
+    if (s.firstInterviewPass > 0) sets.一次面接通過数.add(s.id);
+    if (s.secondInterviewPass > 0) sets.二次面接通過数.add(s.id);
+    if (s.offers > 0) sets.内定数.add(s.id);
+    if (s.acceptances > 0) sets.内定承諾数.add(s.id);
+    if (s.hires > 0) sets.入社数.add(s.id);
   }
 
-  return Array.from(monthMap.values()).sort((a, b) =>
-    a.month.localeCompare(b.month)
-  );
+  // 推薦数（応募管理ベース）: 推薦済み応募(推薦日時 or フェーズあり)を、その求職者のエントリー月に計上。
+  // 集計数=応募件数（求職者×企業）、ユニーク=重複を除いた求職者数。
+  for (const a of apps) {
+    if (!(a.recommendDate || a.phase)) continue;
+    for (const sid of a.seekerIds) {
+      const s = seekerById.get(sid);
+      if (!s || !s.entryDate) continue;
+      const monthKey = toMonthKey(s.entryDate);
+      const m = ensure(monthKey);
+      m.推薦社数 += 1;
+      uniqueSets.get(monthKey)!.推薦社数.add(sid);
+      break; // 1応募につき1回（seekerIdsは通常1件）
+    }
+  }
+
+  const result = Array.from(monthMap.values());
+  for (const m of result) {
+    const sets = uniqueSets.get(m.month)!;
+    const unique: Record<string, number> = {};
+    for (const k of RECOMMEND_ONWARD_KEYS) unique[k] = sets[k].size;
+    m.unique = unique;
+  }
+  return result.sort((a, b) => a.month.localeCompare(b.month));
 }
 
-export function computeStaffMetrics(seekers: RawJobSeeker[]): {
+export function computeStaffMetrics(
+  seekers: RawJobSeeker[],
+  apps: RawApplication[] = []
+): {
   staffList: string[];
   staffMetrics: Record<string, MonthlyCAMetrics[]>;
 } {
@@ -290,7 +359,7 @@ export function computeStaffMetrics(seekers: RawJobSeeker[]): {
   const staffMetrics: Record<string, MonthlyCAMetrics[]> = {};
 
   for (const [staff, group] of staffGroups) {
-    staffMetrics[staff] = computeMonthlyMetrics(group);
+    staffMetrics[staff] = computeMonthlyMetrics(group, apps);
   }
 
   return { staffList, staffMetrics };
@@ -313,6 +382,10 @@ export function computeGrandTotals(
     totals.内定数 += m.内定数;
     totals.内定承諾数 += m.内定承諾数;
     totals.入社数 += m.入社数;
+    // ユニーク人数も合算（各求職者はエントリー月1つに属するため月別の単純加算で総ユニーク数になる）
+    for (const k of RECOMMEND_ONWARD_KEYS) {
+      totals.unique![k] = (totals.unique![k] ?? 0) + (m.unique?.[k] ?? 0);
+    }
   }
 
   return totals;
@@ -460,7 +533,10 @@ export function computeStaffAverageDays(
 // =============================================================
 // 流入経路別 CA 指標
 // =============================================================
-export function computeSourceMetrics(seekers: RawJobSeeker[]): {
+export function computeSourceMetrics(
+  seekers: RawJobSeeker[],
+  apps: RawApplication[] = []
+): {
   sourceList: string[];
   sourceMetrics: Record<string, MonthlyCAMetrics[]>;
 } {
@@ -476,7 +552,7 @@ export function computeSourceMetrics(seekers: RawJobSeeker[]): {
   const sourceList = Array.from(groups.keys()).sort();
   const sourceMetrics: Record<string, MonthlyCAMetrics[]> = {};
   for (const [src, group] of groups) {
-    sourceMetrics[src] = computeMonthlyMetrics(group);
+    sourceMetrics[src] = computeMonthlyMetrics(group, apps);
   }
   return { sourceList, sourceMetrics };
 }
@@ -502,7 +578,8 @@ export function computeSourceAverageDays(
 // 担当者 × 流入経路 の 2D 集計 (併用フィルタ用)
 // =============================================================
 export function computeStaffSourceMetrics(
-  seekers: RawJobSeeker[]
+  seekers: RawJobSeeker[],
+  apps: RawApplication[] = []
 ): Record<string, Record<string, MonthlyCAMetrics[]>> {
   const groups = new Map<string, Map<string, RawJobSeeker[]>>();
   for (const s of seekers) {
@@ -518,7 +595,7 @@ export function computeStaffSourceMetrics(
   for (const [staff, staffMap] of groups) {
     result[staff] = {};
     for (const [src, list] of staffMap) {
-      result[staff][src] = computeMonthlyMetrics(list);
+      result[staff][src] = computeMonthlyMetrics(list, apps);
     }
   }
   return result;
@@ -788,18 +865,29 @@ export function computeApplicationFunnel(
   const PASSED_OFFER  = new Set(["内定","内定承諾","入社"]);
   const PASSED_ACCEPT = new Set(["内定承諾","入社"]);
 
+  // フェーズごとの「重複を除いた求職者ID集合」（ユニーク実人数用）
+  const uRec = new Set<string>();
+  const uFirst = new Set<string>();
+  const uSecond = new Set<string>();
+  const uFinal = new Set<string>();
+  const uOffer = new Set<string>();
+  const uAccept = new Set<string>();
+  const uJoin = new Set<string>();
+  const addAll = (set: Set<string>, ids: string[]) => { for (const id of ids) set.add(id); };
+
   for (const a of apps) {
     if (a.phase) {
       byPhase[a.phase] = (byPhase[a.phase] ?? 0) + 1;
     }
+    const ids = a.seekerIds;
     // 日付があれば日付を優先、なければフェーズで推算（累積カウント）
-    if (a.recommendDate || a.phase) recommended += 1;
-    if (a.firstInterviewDate  || (a.phase && PASSED_FIRST.has(a.phase)))  firstInterview += 1;
-    if (a.secondInterviewDate || (a.phase && PASSED_SECOND.has(a.phase))) secondInterview += 1;
-    if (a.finalInterviewDate  || (a.phase && PASSED_FINAL.has(a.phase)))  finalInterview += 1;
-    if (a.offerDate           || (a.phase && PASSED_OFFER.has(a.phase)))  offers += 1;
-    if (a.acceptanceDate      || (a.phase && PASSED_ACCEPT.has(a.phase))) acceptances += 1;
-    if (a.phase === "入社") joins += 1;
+    if (a.recommendDate || a.phase) { recommended += 1; addAll(uRec, ids); }
+    if (a.firstInterviewDate  || (a.phase && PASSED_FIRST.has(a.phase)))  { firstInterview += 1; addAll(uFirst, ids); }
+    if (a.secondInterviewDate || (a.phase && PASSED_SECOND.has(a.phase))) { secondInterview += 1; addAll(uSecond, ids); }
+    if (a.finalInterviewDate  || (a.phase && PASSED_FINAL.has(a.phase)))  { finalInterview += 1; addAll(uFinal, ids); }
+    if (a.offerDate           || (a.phase && PASSED_OFFER.has(a.phase)))  { offers += 1; addAll(uOffer, ids); }
+    if (a.acceptanceDate      || (a.phase && PASSED_ACCEPT.has(a.phase))) { acceptances += 1; addAll(uAccept, ids); }
+    if (a.phase === "入社") { joins += 1; addAll(uJoin, ids); }
     if (a.documentNgDate) documentNg += 1;
     if (a.interviewNgDate) interviewNg += 1;
     if (a.declineDate) declines += 1;
@@ -818,6 +906,15 @@ export function computeApplicationFunnel(
     documentNg,
     interviewNg,
     declines,
+    unique: {
+      recommended: uRec.size,
+      firstInterview: uFirst.size,
+      secondInterview: uSecond.size,
+      finalInterview: uFinal.size,
+      offers: uOffer.size,
+      acceptances: uAccept.size,
+      joins: uJoin.size,
+    },
   };
 }
 
@@ -1324,10 +1421,10 @@ export function processAllData(
     };
   });
 
-  const monthlyMetrics = computeMonthlyMetrics(enrichedSeekers);
-  const { staffList, staffMetrics } = computeStaffMetrics(enrichedSeekers);
-  const { sourceList, sourceMetrics } = computeSourceMetrics(enrichedSeekers);
-  const staffSourceMetrics = computeStaffSourceMetrics(enrichedSeekers);
+  const monthlyMetrics = computeMonthlyMetrics(enrichedSeekers, applications);
+  const { staffList, staffMetrics } = computeStaffMetrics(enrichedSeekers, applications);
+  const { sourceList, sourceMetrics } = computeSourceMetrics(enrichedSeekers, applications);
+  const staffSourceMetrics = computeStaffSourceMetrics(enrichedSeekers, applications);
   const grandTotals = computeGrandTotals(monthlyMetrics);
   const averageDays = computeAverageDays(seekers, applications);
   const staffAverageDays = computeStaffAverageDays(seekers, applications);

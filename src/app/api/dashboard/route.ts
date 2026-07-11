@@ -81,6 +81,15 @@ function emptyData(): DashboardData {
       documentNg: 0,
       interviewNg: 0,
       declines: 0,
+      unique: {
+        recommended: 0,
+        firstInterview: 0,
+        secondInterview: 0,
+        finalInterview: 0,
+        offers: 0,
+        acceptances: 0,
+        joins: 0,
+      },
     },
     offerComparison: {
       offer: { count: 0, avgRecommendations: 0, avgFirstInterview: 0 },

@@ -83,7 +83,48 @@ function emptyMonthlyMetrics(month: string): MonthlyCAMetrics {
     内定数: 0,
     内定承諾数: 0,
     入社数: 0,
+    unique: {},
   };
+}
+
+// 推薦以降のフェーズキー（ユニーク実人数を併記する対象）
+const RECOMMEND_ONWARD_KEYS: CAMetricKey[] = [
+  "推薦社数",
+  "面接設定数",
+  "面接実施数",
+  "一次面接通過数",
+  "二次面接通過数",
+  "内定数",
+  "内定承諾数",
+  "入社数",
+];
+const isOnwardKey = (key: CAMetricKey) => RECOMMEND_ONWARD_KEYS.includes(key);
+
+// 推薦以降のフェーズはエントリー→フェーズ人数として応募件数を数えるため、
+// 割合分母の「人ベース値」は 推薦以降=ユニーク実人数 / それ以前=そのまま
+function personValue(key: CAMetricKey, agg: Record<string, number>, unique: Record<string, number>): number {
+  return isOnwardKey(key) ? (unique[key] ?? 0) : (agg[key] ?? 0);
+}
+
+// 集計数 + (ユニーク実人数) を表示（推薦以降のみ括弧併記）
+function CountWithUnique({ agg, key2, unique }: { agg: number; key2: CAMetricKey; unique: Record<string, number> }) {
+  if (!isOnwardKey(key2)) return <>{fmt(agg)}</>;
+  return (
+    <>
+      {fmt(agg)}
+      <span className="text-gray-400 text-[9px] ml-0.5">({fmt(unique[key2] ?? 0)})</span>
+    </>
+  );
+}
+
+// 割合 + (人ベース割合) を縦積みで表示
+function RateWithUnique({ numAgg, denAgg, numU, denU }: { numAgg: number; denAgg: number; numU: number; denU: number }) {
+  return (
+    <>
+      {pct(numAgg, denAgg)}
+      <span className="block text-gray-400 text-[9px] leading-tight">({pct(numU, denU)})</span>
+    </>
+  );
 }
 
 // 複数 list の月別指標を合計
@@ -96,6 +137,10 @@ function sumMetricsLists(lists: MonthlyCAMetrics[][]): MonthlyCAMetrics[] {
       const t = map.get(m.month)!;
       for (const k of CA_METRIC_KEYS) {
         t[k] += m[k];
+      }
+      // ユニーク実人数も月ごとに合算（担当者×流入経路は排他なので単純加算で重複なし）
+      for (const k of RECOMMEND_ONWARD_KEYS) {
+        t.unique![k] = (t.unique![k] ?? 0) + (m.unique?.[k] ?? 0);
       }
     }
   }
@@ -460,20 +505,30 @@ function ApplicationFunnelSection({
     offers: number;
     acceptances: number;
     joins: number;
+    unique: {
+      recommended: number;
+      firstInterview: number;
+      secondInterview: number;
+      finalInterview: number;
+      offers: number;
+      acceptances: number;
+      joins: number;
+    };
   };
   comparison: OfferComparison;
   inProgress: InProgressBuckets;
 }) {
   const base = Math.max(funnel.recommended, 1);
+  const baseU = Math.max(funnel.unique.recommended, 1);
 
   const rows = [
-    { label: "推薦", count: funnel.recommended },
-    { label: "一次面接 実施", count: funnel.firstInterview },
-    { label: "二次面接 実施", count: funnel.secondInterview },
-    { label: "最終面接 実施", count: funnel.finalInterview },
-    { label: "内定", count: funnel.offers },
-    { label: "内定承諾", count: funnel.acceptances },
-    { label: "入社", count: funnel.joins },
+    { label: "推薦", count: funnel.recommended, uniq: funnel.unique.recommended },
+    { label: "一次面接 実施", count: funnel.firstInterview, uniq: funnel.unique.firstInterview },
+    { label: "二次面接 実施", count: funnel.secondInterview, uniq: funnel.unique.secondInterview },
+    { label: "最終面接 実施", count: funnel.finalInterview, uniq: funnel.unique.finalInterview },
+    { label: "内定", count: funnel.offers, uniq: funnel.unique.offers },
+    { label: "内定承諾", count: funnel.acceptances, uniq: funnel.unique.acceptances },
+    { label: "入社", count: funnel.joins, uniq: funnel.unique.joins },
   ];
 
   return (
@@ -485,7 +540,7 @@ function ApplicationFunnelSection({
             <thead>
               <tr className="bg-gray-50 text-gray-600 text-left">
                 <th className="px-3 py-1.5 font-medium">ステップ</th>
-                <th className="px-3 py-1.5 font-medium text-right">件数</th>
+                <th className="px-3 py-1.5 font-medium text-right">件数<span className="text-gray-400 font-normal">（実人数）</span></th>
                 <th className="px-3 py-1.5 font-medium text-right">推薦比 (%)</th>
                 <th className="px-3 py-1.5 font-medium text-right">前段比 (%)</th>
               </tr>
@@ -493,15 +548,21 @@ function ApplicationFunnelSection({
             <tbody>
               {rows.map((row, i) => {
                 const prev = i === 0 ? row.count : rows[i - 1].count;
+                const prevU = i === 0 ? row.uniq : rows[i - 1].uniq;
                 return (
                   <tr key={row.label} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-1.5 font-medium text-gray-800 whitespace-nowrap">{row.label}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{fmt(row.count)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-blue-600">
-                      {pct(row.count, base)}
+                    <td className="px-3 py-1.5 text-right tabular-nums font-semibold whitespace-nowrap">
+                      {fmt(row.count)}
+                      <span className="text-gray-400 text-xs font-normal ml-1">({fmt(row.uniq)})</span>
                     </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                    <td className="px-3 py-1.5 text-right tabular-nums text-blue-600 whitespace-nowrap">
+                      {pct(row.count, base)}
+                      <span className="text-gray-400 text-xs ml-1">({pct(row.uniq, baseU)})</span>
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-500 whitespace-nowrap">
                       {i === 0 ? "-" : pct(row.count, prev)}
+                      {i !== 0 && <span className="text-gray-400 text-xs ml-1">({pct(row.uniq, prevU)})</span>}
                     </td>
                   </tr>
                 );
@@ -940,6 +1001,16 @@ export default function Dashboard() {
     return t as Record<CAMetricKey, number>;
   }, [displayMetrics]);
 
+  // 表示中の推薦以降フェーズ別ユニーク実人数の合計
+  const displayUnique = useMemo((): Record<string, number> => {
+    const u: Record<string, number> = {};
+    for (const key of RECOMMEND_ONWARD_KEYS) u[key] = 0;
+    for (const row of displayMetrics) {
+      for (const key of RECOMMEND_ONWARD_KEYS) u[key] += row.unique?.[key] ?? 0;
+    }
+    return u;
+  }, [displayMetrics]);
+
   // 表示中の期間×選択媒体のマーケ費合計（KPIカード・合計行用）
   // 期間フィルターなし = 全マーケ費（求職者エントリーがない月も含む）
   // 期間フィルターあり = 選択月のみ合算
@@ -957,6 +1028,10 @@ export default function Dashboard() {
       return t as Record<CAMetricKey, number>;
     }
     return data.grandTotals as unknown as Record<CAMetricKey, number>;
+  }, [data]);
+
+  const grandUnique = useMemo((): Record<string, number> => {
+    return (data?.grandTotals?.unique ?? {}) as Record<string, number>;
   }, [data]);
 
   const averageDays = useMemo((): AverageDays => {
@@ -1519,15 +1594,15 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-            <table className="w-full text-xs table-fixed">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+            <table className="text-xs table-fixed min-w-full">
               <colgroup>
                 <col className="w-[68px]" />
                 {CA_METRIC_KEYS.map((k) => (
-                  <col key={k} className="w-[64px]" />
+                  <col key={k} className={isOnwardKey(k) ? "w-[82px]" : "w-[64px]"} />
                 ))}
-                <col className="w-[60px]" />
-                <col className="w-[60px]" />
+                <col className="w-[76px]" />
+                <col className="w-[76px]" />
                 <col className="w-[68px]" />
                 <col className="w-[68px]" />
               </colgroup>
@@ -1562,14 +1637,14 @@ export default function Dashboard() {
                         <td className="px-1.5 py-1.5 font-medium text-gray-800">{row.month.slice(2)}</td>
                         {CA_METRIC_KEYS.map((key) => (
                           <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
-                            {fmt(row[key])}
+                            <CountWithUnique agg={row[key]} key2={key} unique={row.unique ?? {}} />
                           </td>
                         ))}
                         <td className="px-1.5 py-1.5 text-right text-blue-600 font-medium">
-                          {pct(row.内定承諾数, row.エントリー数)}
+                          <RateWithUnique numAgg={row.内定承諾数} denAgg={row.エントリー数} numU={row.unique?.["内定承諾数"] ?? 0} denU={row.エントリー数} />
                         </td>
                         <td className="px-1.5 py-1.5 text-right text-blue-600 font-medium">
-                          {pct(row.内定承諾数, row.面談数)}
+                          <RateWithUnique numAgg={row.内定承諾数} denAgg={row.面談数} numU={row.unique?.["内定承諾数"] ?? 0} denU={row.面談数} />
                         </td>
                         <td className="px-1.5 py-1.5 text-right tabular-nums">
                           {selectedMarketingCostMap[row.month] != null
@@ -1583,11 +1658,19 @@ export default function Dashboard() {
                     <tr className="border-t-2 border-gray-200 bg-blue-50/50 text-[10px] text-gray-500">
                       <td className="px-1.5 py-1 font-medium">転換率</td>
                       <td className="px-1.5 py-1 text-right">-</td>
-                      {CA_METRIC_KEYS.slice(1).map((key, idx) => (
-                        <td key={key} className="px-1.5 py-1 text-right">
-                          {pct(displayTotals[key], displayTotals[CA_METRIC_KEYS[idx]])}
-                        </td>
-                      ))}
+                      {CA_METRIC_KEYS.slice(1).map((key, idx) => {
+                        const prevKey = CA_METRIC_KEYS[idx];
+                        return (
+                          <td key={key} className="px-1.5 py-1 text-right align-top">
+                            <RateWithUnique
+                              numAgg={displayTotals[key]}
+                              denAgg={displayTotals[prevKey]}
+                              numU={personValue(key, displayTotals, displayUnique)}
+                              denU={personValue(prevKey, displayTotals, displayUnique)}
+                            />
+                          </td>
+                        );
+                      })}
                       <td className="px-1.5 py-1 text-right">-</td>
                       <td className="px-1.5 py-1 text-right">-</td>
                       <td className="px-1.5 py-1 text-right">-</td>
@@ -1597,15 +1680,15 @@ export default function Dashboard() {
                     <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
                       <td className="px-1.5 py-1.5">合計</td>
                       {CA_METRIC_KEYS.map((key) => (
-                        <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
-                          {fmt(displayTotals[key])}
+                        <td key={key} className="px-1.5 py-1.5 text-right tabular-nums align-top">
+                          <CountWithUnique agg={displayTotals[key]} key2={key} unique={displayUnique} />
                         </td>
                       ))}
-                      <td className="px-1.5 py-1.5 text-right text-blue-600">
-                        {pct(displayTotals["内定承諾数"], displayTotals["エントリー数"])}
+                      <td className="px-1.5 py-1.5 text-right text-blue-600 align-top">
+                        <RateWithUnique numAgg={displayTotals["内定承諾数"]} denAgg={displayTotals["エントリー数"]} numU={displayUnique["内定承諾数"] ?? 0} denU={displayTotals["エントリー数"]} />
                       </td>
-                      <td className="px-1.5 py-1.5 text-right text-blue-600">
-                        {pct(displayTotals["内定承諾数"], displayTotals["面談数"])}
+                      <td className="px-1.5 py-1.5 text-right text-blue-600 align-top">
+                        <RateWithUnique numAgg={displayTotals["内定承諾数"]} denAgg={displayTotals["面談数"]} numU={displayUnique["内定承諾数"] ?? 0} denU={displayTotals["面談数"]} />
                       </td>
                       <td className="px-1.5 py-1.5 text-right tabular-nums">
                         ¥{fmt(displayMarketingTotal)}
@@ -1620,15 +1703,15 @@ export default function Dashboard() {
                     <tr className="border-t border-gray-200 bg-yellow-50/50 font-semibold text-gray-700">
                       <td className="px-1.5 py-1.5">累計</td>
                       {CA_METRIC_KEYS.map((key) => (
-                        <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
-                          {fmt(grandTotals[key])}
+                        <td key={key} className="px-1.5 py-1.5 text-right tabular-nums align-top">
+                          <CountWithUnique agg={grandTotals[key]} key2={key} unique={grandUnique} />
                         </td>
                       ))}
-                      <td className="px-1.5 py-1.5 text-right text-blue-600">
-                        {pct(grandTotals["内定承諾数"], grandTotals["エントリー数"])}
+                      <td className="px-1.5 py-1.5 text-right text-blue-600 align-top">
+                        <RateWithUnique numAgg={grandTotals["内定承諾数"]} denAgg={grandTotals["エントリー数"]} numU={grandUnique["内定承諾数"] ?? 0} denU={grandTotals["エントリー数"]} />
                       </td>
-                      <td className="px-1.5 py-1.5 text-right text-blue-600">
-                        {pct(grandTotals["内定承諾数"], grandTotals["面談数"])}
+                      <td className="px-1.5 py-1.5 text-right text-blue-600 align-top">
+                        <RateWithUnique numAgg={grandTotals["内定承諾数"]} denAgg={grandTotals["面談数"]} numU={grandUnique["内定承諾数"] ?? 0} denU={grandTotals["面談数"]} />
                       </td>
                       <td className="px-1.5 py-1.5 text-right tabular-nums">
                         ¥{fmt(selectedMarketingTotal)}
@@ -1645,7 +1728,7 @@ export default function Dashboard() {
             </table>
           </div>
           <p className="text-[10px] text-gray-400 mt-1">
-            {periodNote} ｜ 月の表示は YY-MM。短縮ラベル: E=エントリー
+            {periodNote} ｜ 月の表示は YY-MM。短縮ラベル: E=エントリー ｜ 推薦は応募管理DBの応募件数（推薦日時 or フェーズあり）。推薦以降の（　）内は重複を除いた実人数、割合の（　）も人ベース
           </p>
 
           {barChartData.length > 0 && (
