@@ -55,6 +55,16 @@ function fmtDate(value: string | null | undefined): string {
   return value.slice(0, 10);
 }
 
+// 今日時点で、指定日から何日経過したか（クライアント描画のみで使用）
+function daysSince(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const d = new Date(value.slice(0, 10) + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((today.getTime() - d.getTime()) / 86_400_000);
+}
+
 const CA_METRIC_LABELS: Record<CAMetricKey, string> = {
   エントリー数: "エントリー",
   有効エントリー数: "有効",
@@ -106,23 +116,25 @@ function personValue(key: CAMetricKey, agg: Record<string, number>, unique: Reco
   return isOnwardKey(key) ? (unique[key] ?? 0) : (agg[key] ?? 0);
 }
 
-// 集計数 + (ユニーク実人数) を表示（推薦以降のみ括弧併記）
+// 集計数 + ユニーク実人数を表示（推薦以降のみ実人数を別行で併記）
 function CountWithUnique({ agg, key2, unique }: { agg: number; key2: CAMetricKey; unique: Record<string, number> }) {
   if (!isOnwardKey(key2)) return <>{fmt(agg)}</>;
   return (
     <>
       {fmt(agg)}
-      <span className="text-gray-400 text-[9px] ml-0.5">({fmt(unique[key2] ?? 0)})</span>
+      <span className="block text-teal-600 text-[10px] font-semibold leading-tight mt-0.5">
+        実{fmt(unique[key2] ?? 0)}
+      </span>
     </>
   );
 }
 
-// 割合 + (人ベース割合) を縦積みで表示
+// 割合 + 人ベース割合を縦積みで表示
 function RateWithUnique({ numAgg, denAgg, numU, denU }: { numAgg: number; denAgg: number; numU: number; denU: number }) {
   return (
     <>
       {pct(numAgg, denAgg)}
-      <span className="block text-gray-400 text-[9px] leading-tight">({pct(numU, denU)})</span>
+      <span className="block text-teal-600 text-[10px] leading-tight mt-0.5">実{pct(numU, denU)}</span>
     </>
   );
 }
@@ -685,10 +697,10 @@ function SeekerTableHeader() {
       <th className={th}  style={{ width: 80  }}>流入<br/>経路</th>
       <th className={th}  style={{ width: 36  }}>性別</th>
       <th className={th}  style={{ width: 72  }}>最終<br/>学歴</th>
-      <th className={thR} style={{ width: 38  }}>転職<br/>回数</th>
+      <th className={thR + " px-1"} style={{ width: 28 }}>転職<br/>回数</th>
       <th className={th}  style={{ width: 60  }}>担当者</th>
       <th className={th}  style={{ width: 66  }}>面談日</th>
-      <th className={th}  style={{ width: 72  }}>エントリー日</th>
+      <th className={th}  style={{ width: 92  }}>エントリー日<br/><span className="font-normal text-gray-400">／経過</span></th>
       <th className={thR} style={{ width: 34  }}>推薦</th>
       <th className={thR} style={{ width: 36  }}>面接<br/>設定</th>
       <th className={thR} style={{ width: 36  }}>面接<br/>実施</th>
@@ -741,10 +753,18 @@ function SeekerTableRows({ rows, label }: { rows: JobSeekerSummary[]; label: str
           <td className={td}>{r.source || "-"}</td>
           <td className={td}>{r.gender || "-"}</td>
           <td className={td}>{r.education || "-"}</td>
-          <td className={tdR + " text-gray-600"}>{r.jobChangeCount !== null ? r.jobChangeCount : "-"}</td>
+          <td className={tdR + " px-1 text-gray-600"}>{r.jobChangeCount !== null ? r.jobChangeCount : "-"}</td>
           <td className={td}>{r.staff || "-"}</td>
           <td className="px-1.5 py-1.5 whitespace-nowrap text-gray-700 font-medium">{fmtDate(r.interviewDate)}</td>
-          <td className="px-1.5 py-1.5 whitespace-nowrap text-gray-600">{fmtDate(r.entryDate)}</td>
+          <td className="px-1.5 py-1.5 whitespace-nowrap text-gray-600">
+            {fmtDate(r.entryDate)}
+            {(() => {
+              const d = daysSince(r.entryDate);
+              return d !== null ? (
+                <span className="ml-1 text-gray-400 text-[10px]">（{d}日）</span>
+              ) : null;
+            })()}
+          </td>
           <td className={tdR}>{r.recommendations}</td>
           <td className={tdR}>{r.interviewSettings}</td>
           <td className={tdR}>{r.interviewsConducted}</td>
@@ -1728,7 +1748,7 @@ export default function Dashboard() {
             </table>
           </div>
           <p className="text-[10px] text-gray-400 mt-1">
-            {periodNote} ｜ 月の表示は YY-MM。短縮ラベル: E=エントリー ｜ 推薦は応募管理DBの応募件数（推薦日時 or フェーズあり）。推薦以降の（　）内は重複を除いた実人数、割合の（　）も人ベース
+            {periodNote} ｜ 月の表示は YY-MM。短縮ラベル: E=エントリー ｜ 推薦は応募管理DBの応募件数（推薦日時 or フェーズあり）。推薦以降の <span className="text-teal-600 font-semibold">実●</span> は重複を除いた実人数、割合の 実● も人ベース
           </p>
 
           {barChartData.length > 0 && (
