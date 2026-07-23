@@ -19,8 +19,8 @@ export const MARKETING_COSTS: MonthlyMarketingCost[] = [
   { month: "2026-03", cost: 493560,  breakdown: { "DODA Maps": 256000, "Meta": 237560 } },
   { month: "2026-04", cost: 910000,  breakdown: { "DODA Maps": 70000,  "DODA X": 840000 } },
   { month: "2026-05", cost: 443000,  breakdown: { "DODA Maps": 443000 } },
-  { month: "2026-06", cost: 240000,  breakdown: { "DODA Maps": 240000 } },
-  { month: "2026-07", cost: 615300,  breakdown: { "DODA X": 615300 } },
+  { month: "2026-06", cost: 224000,  breakdown: { "DODA Maps": 224000 } },
+  { month: "2026-07", cost: 865300,  breakdown: { "DODA Maps": 250000, "DODA X": 615300 } }, // DODA Maps は暫定値
 ];
 
 // --- マーケ費用のマップ取得 ---
