@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from "react";
 import { CA_METRIC_KEYS, CAMetricKey } from "@/lib/types";
 import { MARKETING_COSTS, getMarketingCostMap } from "@/lib/marketing-data";
+import { groupJobCodesByCategory } from "@/lib/job-code-categories";
 import type {
   DashboardData,
   MonthlyCAMetrics,
@@ -838,7 +839,7 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-y-auto max-h-[600px]">
         <table className="w-full table-fixed text-[11px]">
-          <thead className="sticky top-0 z-10">
+          <thead className="sticky top-0 z-30">
             <SeekerTableHeader />
           </thead>
           <tbody>
@@ -2041,23 +2042,36 @@ export default function Dashboard({ section }: { section?: SectionId }) {
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              公開中求人の職種コード別内訳（飲食以外＋飲食 合算）
+              公開中求人の職種コード別内訳（dodaカテゴリ別・飲食以外＋飲食 合算）
             </h3>
             {data && Object.keys(data.jobSummary.publishedByJobCode).length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                {Object.entries(data.jobSummary.publishedByJobCode)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([code, count]) => (
-                    <div
-                      key={code}
-                      className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
-                    >
-                      <span className="text-gray-700 truncate">{code}</span>
-                      <span className="tabular-nums font-semibold text-gray-900 ml-2">
-                        {fmt(count)}
-                      </span>
+              <div className="space-y-4">
+                {groupJobCodesByCategory(data.jobSummary.publishedByJobCode).map(
+                  ({ category, total, items }) => (
+                    <div key={category}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <h4 className="text-xs font-bold text-gray-600">{category}</h4>
+                        <span className="text-[11px] text-gray-400 tabular-nums">
+                          {fmt(total)}件・{items.length}職種
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                        {items.map(([code, count]) => (
+                          <div
+                            key={code}
+                            title={code}
+                            className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
+                          >
+                            <span className="text-gray-700 truncate">{code}</span>
+                            <span className="tabular-nums font-semibold text-gray-900 ml-2">
+                              {fmt(count)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  )
+                )}
               </div>
             ) : (
               <p className="text-xs text-gray-400">
