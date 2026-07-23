@@ -1323,10 +1323,6 @@ export default function Dashboard({ section }: { section?: SectionId }) {
     return { fy25, fy26, total };
   }, [filteredForFY]);
 
-  function scrollToSection(id: string) {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   function toggleSource(s: string) {
     setSelectedSources((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
@@ -1401,35 +1397,29 @@ export default function Dashboard({ section }: { section?: SectionId }) {
           </div>
         </div>
         <nav className="max-w-[1440px] mx-auto px-4 pt-2 pb-2.5 flex gap-2 overflow-x-auto">
-          {section && (
-            <Link href="/" className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition">
-              全体表示
-            </Link>
-          )}
+          <Link
+            href="/"
+            className={
+              !section
+                ? "shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-transparent"
+                : "shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition"
+            }
+          >
+            全体表示
+          </Link>
           {NAV_ITEMS.map((item) => {
             const active = section === item.id;
             const cls = active
               ? "shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-transparent"
-              : item.id === "ra" && !section
-                ? "shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-transparent hover:bg-blue-100 transition"
-                : "shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition";
+              : "shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300 transition";
             const prefixCls = item.prefix === "RA"
               ? "text-[10px] text-blue-500 font-bold mr-1"
               : "text-[10px] text-gray-400 font-bold mr-1";
-            const inner = (
-              <>
+            return (
+              <Link key={item.id} href={`/${item.id}`} className={cls}>
                 {item.prefix && <span className={prefixCls}>{item.prefix}</span>}
                 {item.label}
-              </>
-            );
-            return section ? (
-              <Link key={item.id} href={`/${item.id}`} className={cls}>
-                {inner}
               </Link>
-            ) : (
-              <button key={item.id} onClick={() => scrollToSection(item.id)} className={cls}>
-                {inner}
-              </button>
             );
           })}
         </nav>
