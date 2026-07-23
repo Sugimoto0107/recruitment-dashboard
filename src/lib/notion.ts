@@ -307,6 +307,7 @@ export async function getActiveJobCount(): Promise<number> {
 // =====================================================
 export interface RawApplication {
   id: string;
+  title: string;
   phase: string | null;
   recommendDate: string | null;
   firstInterviewSetDate: string | null;
@@ -338,8 +339,13 @@ export async function getAllApplications(): Promise<RawApplication[]> {
         if (!Array.isArray(rel)) return [];
         return rel.map((r: any) => r?.id).filter(Boolean);
       };
+      const titleParts = props["件名"]?.title;
+      const title = Array.isArray(titleParts)
+        ? titleParts.map((t: any) => t?.plain_text ?? "").join("")
+        : "";
       return {
         id: page.id,
+        title,
         phase: props["フェーズ"]?.select?.name ?? null,
         recommendDate: dateOf("推薦日時"),
         firstInterviewSetDate: dateOf("一次面接日程確定日"),

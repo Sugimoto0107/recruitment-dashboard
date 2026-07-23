@@ -937,6 +937,20 @@ export function computeInProgress(
     内定: [],
   };
 
+  // 件名「氏名 × 社名（フェーズ）」から氏名・社名を抽出（リレーション未設定時のフォールバック）
+  function parseTitle(title: string): { name: string; company: string } {
+    // 末尾の（...）/(...) を除去
+    const stripped = title.replace(/[（(][^（()）]*[）)]\s*$/, "").trim();
+    const parts = stripped.split(/\s*[×✕Ｘｘ]\s*|\s+[xX]\s+/);
+    if (parts.length >= 2) {
+      return {
+        name: parts[0].trim(),
+        company: parts.slice(1).join("×").trim(),
+      };
+    }
+    return { name: stripped, company: "" };
+  }
+
   function buildItem(
     a: RawApplication,
     scheduledDate: string | null
@@ -947,11 +961,12 @@ export function computeInProgress(
     const company = a.companyIds
       .map((id) => companyById.get(id))
       .find((c) => !!c);
+    const fromTitle = parseTitle(a.title ?? "");
     return {
       applicationId: a.id,
       phase: a.phase ?? "",
-      candidateName: candidate?.name || "(未設定)",
-      companyName: company?.name || "(未設定)",
+      candidateName: candidate?.name || fromTitle.name || "(未設定)",
+      companyName: company?.name || fromTitle.company || "(未設定)",
       scheduledDate,
     };
   }
