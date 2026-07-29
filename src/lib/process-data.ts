@@ -1013,11 +1013,19 @@ export function computeInProgress(
 // =============================================================
 // 求職者サマリー (個別)
 // =============================================================
+// Notion「求職者管理」の最終結果が「活動継続」の人だけを対象にする（サービス終了・入社・他社決定等は除外）
+export const ACTIVE_FINAL_RESULT = "活動継続";
+
 export function buildJobSeekerSummaries(
   seekers: RawJobSeeker[]
 ): JobSeekerSummary[] {
   return seekers
-    .filter((s) => !s.isInvalid && (s.interviewDone || s.recommendations > 0))
+    .filter(
+      (s) =>
+        !s.isInvalid &&
+        s.finalResult === ACTIVE_FINAL_RESULT &&
+        (s.interviewDone || s.recommendations > 0)
+    )
     .map((s) => ({
       id: s.id,
       name: s.name || "(未設定)",

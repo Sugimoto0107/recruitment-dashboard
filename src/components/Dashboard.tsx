@@ -790,15 +790,15 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
   const [sortKey, setSortKey] = useState<SeekerSortKey>("interviewDate");
   const { foodRows, nonFoodRows, totalFiltered } = useMemo(() => {
     const q = filter.trim();
+    // rows は最終結果=活動継続の求職者のみ（process-data.ts の buildJobSeekerSummaries で絞り込み済み）
     const base = q
       ? rows.filter(
           (r) =>
             r.name.includes(q) ||
             r.source.includes(q) ||
-            r.staff.includes(q) ||
-            r.finalResult.includes(q)
+            r.staff.includes(q)
         )
-      : rows.filter((r) => !r.finalResult);
+      : rows;
 
     const sorted = [...base].sort((a, b) => {
       if (sortKey === "staff") return a.staff.localeCompare(b.staff, "ja");
@@ -830,7 +830,7 @@ function JobSeekerTable({ rows }: { rows: JobSeekerSummary[] }) {
             <option value="staff">担当者順</option>
           </select>
           <span className="text-xs text-gray-500">
-            {filter ? "面談実施済 全員から検索" : "面談実施済 × 最終結果未設定"}
+            面談実施済 × 最終結果「活動継続」
           </span>
         </div>
         <span className="text-xs text-gray-500">
