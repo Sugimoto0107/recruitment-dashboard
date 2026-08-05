@@ -30,6 +30,12 @@ function getApplicationDbId(): string {
 function getSeekerDbId(): string {
   return toUuid(process.env.NOTION_SEEKER_DB_ID ?? "");
 }
+// 求職者管理DBは複数データソースを持つため、data source 単位でクエリする。
+// 環境変数で明示指定できるが、未設定なら DB から動的に解決する。
+function getSeekerDataSourceId(): string {
+  return toUuid(process.env.NOTION_SEEKER_DATA_SOURCE_ID ?? "9404513fbd3640a4a869ccbc605b101c");
+}
+const SEEKER_DATA_SOURCE_NAME = "求職者管理";
 
 // --- ステータス候補 (Notion 側の select option と一致させる) ---
 export const COMPANY_STATUSES = [
@@ -405,21 +411,80 @@ export interface RawJobSeeker {
   jobChangeCount: number | null;
 }
 
+// 求職者管理DBが持つ data source のうち、実データが入っている方のIDを解決する。
+// 解決できなければ環境変数／既定値をそのまま返す。
+async function resolveSeekerDataSourceId(notionLatest: Client): Promise<string> {
+  const fallback = getSeekerDataSourceId();
+  const seekerDbId = getSeekerDbId();
+  if (!seekerDbId) return fallback;
+
+  try {
+    const db: any = await notionLatest.request({
+      path: `databases/${seekerDbId}`,
+      method: "get",
+    });
+    const sources: any[] = db?.data_sources ?? [];
+    if (sources.length === 0) return fallback;
+    const named = sources.find((s) => s?.name === SEEKER_DATA_SOURCE_NAME);
+    return named?.id ?? sources[0]?.id ?? fallback;
+  } catch (_e) {
+    return fallback;
+  }
+}
+
+// data source 単位のページネーション付きクエリ
+async function queryAllDataSourcePages(
+  notionLatest: Client,
+  dataSourceId: string
+): Promise<any[]> {
+  if (!dataSourceId) return [];
+
+  const allResults: any[] = [];
+  let hasMore = true;
+  let startCursor: string | undefined = undefined;
+
+  while (hasMore) {
+    const body: Record<string, unknown> = { page_size: 100 };
+    if (startCursor) body.start_cursor = startCursor;
+
+    const response: any = await notionLatest.request({
+      path: `data_sources/${dataSourceId}/query`,
+      method: "post",
+      body,
+    });
+    allResults.push(...(response.results ?? []));
+    hasMore = response.has_more;
+    startCursor = response.next_cursor ?? undefined;
+  }
+
+  return allResults;
+}
+
 async function querySeekerPages(): Promise<any[]> {
   const seekerDbId = getSeekerDbId();
   if (!seekerDbId) return [];
 
-  // まずマルチソース対応クライアントで試行
   const notionLatest = getNotionClientLatest();
   if (notionLatest) {
+    // 1) data source 単位でクエリ（マルチソースDBの正攻法）
     try {
-      return await queryAllPages(notionLatest, seekerDbId);
+      const dataSourceId = await resolveSeekerDataSourceId(notionLatest);
+      const rows = await queryAllDataSourcePages(notionLatest, dataSourceId);
+      if (rows.length > 0) return rows;
     } catch (_e1) {
-      // 失敗したら /v1/search にフォールバック
+      // 次の手段へ
+    }
+
+    // 2) 単一ソースDBに戻った場合に備えて databases/{id}/query も試す
+    try {
+      const rows = await queryAllPages(notionLatest, seekerDbId);
+      if (rows.length > 0) return rows;
+    } catch (_e2) {
+      // /v1/search にフォールバック
     }
   }
 
-  // /v1/search フォールバック（マルチソースDB用）
+  // 3) /v1/search フォールバック（最終手段。ワークスペース全走査のため低速）
   const notion = getNotionClient();
   if (!notion) return [];
   const dbIdNorm = seekerDbId.replace(/-/g, "");
@@ -435,10 +500,18 @@ async function querySeekerPages(): Promise<any[]> {
     };
     if (startCursor) body.start_cursor = startCursor;
 
-    const response: any = await notion.request({ path: "search", method: "post", body });
-    const filtered = (response.results || []).filter(
-      (p: any) => (p.parent?.database_id || "").replace(/-/g, "") === dbIdNorm
-    );
+    // search のカーソルは途中で失効することがある。その時点までの結果を返す。
+    let response: any;
+    try {
+      response = await notion.request({ path: "search", method: "post", body });
+    } catch (_e3) {
+      break;
+    }
+    const filtered = (response.results || []).filter((p: any) => {
+      const parent = p.parent ?? {};
+      const owner = parent.database_id || parent.data_source_id || "";
+      return owner.replace(/-/g, "") === dbIdNorm;
+    });
     allResults.push(...filtered);
     hasMore = response.has_more;
     startCursor = response.next_cursor ?? undefined;
