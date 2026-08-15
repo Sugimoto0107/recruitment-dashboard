@@ -411,6 +411,12 @@ export interface RawJobSeeker {
   jobChangeCount: number | null;
 }
 
+// 流入経路の正規化。Notion側は自社HPを「HP - 飲食」等の細分で持つが、
+// ダッシュボードでは「HP」ひとくくりで扱う。
+function normalizeSource(source: string): string {
+  return source.startsWith("HP") ? "HP" : source;
+}
+
 // 求職者管理DBが持つ data source のうち、実データが入っている方のIDを解決する。
 // 解決できなければ環境変数／既定値をそのまま返す。
 async function resolveSeekerDataSourceId(notionLatest: Client): Promise<string> {
@@ -561,7 +567,7 @@ export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
         // 生年月日がある場合はformulaが自動計算するので優先、なければ手入力を使用
         age: ageFormula ?? ageManual,
         currentSalary: props["現職年収"]?.number ?? null,
-        source: props["流入経路"]?.select?.name ?? "",
+        source: normalizeSource(props["流入経路"]?.select?.name ?? ""),
         finalResult: props["最終結果"]?.select?.name ?? "",
         speakingRatio: props["発話比率CA"]?.number ?? null,
         isFood: props["飲食"]?.checkbox ?? false,
