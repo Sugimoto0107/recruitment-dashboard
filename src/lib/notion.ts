@@ -547,7 +547,12 @@ export async function getAllJobSeekers(): Promise<RawJobSeeker[]> {
           [txt("姓漢字"), txt("名漢字")].filter(Boolean).join(" "),
         candidateNo: txt("候補者NO"),
         entryDate: props["エントリー日"]?.date?.start ?? null,
-        isInvalid: props["無効エントリー"]?.checkbox ?? false,
+        // 無効エントリーの判定は「無効理由に値があるか」。
+        // かつてあった「無効エントリー」チェックボックスは求職者管理DBから
+        // 無くなっており、読んでも常に undefined → 全員 false になっていた
+        // （2026-09-09に判明。有効エントリー数がエントリー数と同じ値になり、
+        //  CPAの分母が過大になっていた）。LINEタグ同期の decideStateTag_ と同じ定義。
+        isInvalid: Boolean(props["無効理由"]?.select?.name),
         interviewDone: props["面談実施"]?.checkbox ?? false,
         interviewDate: props["面談実施日"]?.date?.start ?? null,
         recommendations: props["推薦社数"]?.number ?? 0,
