@@ -38,6 +38,8 @@ function emptyData(): DashboardData {
     contractedCompanies: 0,
     activeJobs: 0,
     monthlyMetrics: [],
+    monthlyOccurrence: [],
+    staffOccurrence: {},
     staffList: [],
     staffMetrics: {},
     sourceList: [],

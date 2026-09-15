@@ -5,9 +5,11 @@ import { useState, useEffect, useMemo, useCallback, type ReactNode } from "react
 import { CA_METRIC_KEYS, CAMetricKey } from "@/lib/types";
 import { MARKETING_COSTS, getMarketingCostMap } from "@/lib/marketing-data";
 import { groupJobCodesByCategory } from "@/lib/job-code-categories";
+import { OCCURRENCE_METRIC_KEYS, OCCURRENCE_UNIQUE_KEYS } from "@/lib/process-data";
 import type {
   DashboardData,
   MonthlyCAMetrics,
+  MonthlyOccurrenceMetrics,
   ProfileDistribution,
   ProfileGroup,
   AverageDays,
@@ -189,6 +191,103 @@ function KPICard({ title, value, sub }: { title: string; value: string | number;
         {typeof value === "number" ? fmt(value) : value}
       </p>
       {sub && <p className="text-xs text-gray-400">{sub}</p>}
+    </div>
+  );
+}
+
+// --- 実施日起点の月別テーブル ---
+// エントリー月起点の表（上）と対になるもの。推薦・面接・内定・入社を
+// 「その日が来た月」に載せる。7月エントリーの人が9月に承諾したら9月に立つ。
+// 割合はひとつ上の段階を分母にした素直な歩留まりで、（　）内は重複を除いた実人数。
+function OccurrenceTrendTable({
+  rows,
+  disabledReason,
+}: {
+  rows: MonthlyOccurrenceMetrics[];
+  disabledReason: string | null;
+}) {
+  const uniqueKeys = new Set<string>(OCCURRENCE_UNIQUE_KEYS);
+
+  const totals: Record<string, number> = {};
+  const uniqueTotals: Record<string, number> = {};
+  for (const key of OCCURRENCE_METRIC_KEYS) totals[key] = 0;
+  for (const key of OCCURRENCE_UNIQUE_KEYS) uniqueTotals[key] = 0;
+  for (const row of rows) {
+    const r = row as unknown as Record<string, number>;
+    for (const key of OCCURRENCE_METRIC_KEYS) totals[key] += r[key] ?? 0;
+    for (const key of OCCURRENCE_UNIQUE_KEYS) uniqueTotals[key] += row.unique?.[key] ?? 0;
+  }
+
+  const cell = (row: MonthlyOccurrenceMetrics | null, key: string) => {
+    const value = row
+      ? (row as unknown as Record<string, number>)[key] ?? 0
+      : totals[key] ?? 0;
+    const uniq = row ? row.unique?.[key] : uniqueTotals[key];
+    const showUnique = uniqueKeys.has(key) && uniq !== undefined && uniq !== value;
+    return (
+      <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
+        <span className={value === 0 ? "text-gray-300" : "text-gray-800"}>{fmt(value)}</span>
+        {showUnique && <span className="text-gray-400 text-[10px] ml-1">({fmt(uniq!)})</span>}
+      </td>
+    );
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">
+        実施日起点の歩留まり推移
+      </h3>
+      <p className="text-[10px] text-gray-400 mb-3">
+        上の表がエントリー月にまとめるのに対し、こちらは推薦日・面接実施日・内定日・承諾日・入社想定日の月に計上します。
+        その月に実際どれだけ動いたかを見るための表です。日付が空の行はその指標では数えません。
+      </p>
+
+      {disabledReason ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-400">
+          {disabledReason}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-400">
+          対象データがありません
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 text-gray-600">
+                <th className="px-1.5 py-1.5 font-medium text-left">月</th>
+                {OCCURRENCE_METRIC_KEYS.map((key) => (
+                  <th key={key} className="px-1.5 py-1.5 font-medium text-right whitespace-nowrap">
+                    {key.replace(/数$/, "")}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.month} className="border-t border-gray-100">
+                  <td className="px-1.5 py-1.5 text-gray-700 whitespace-nowrap">
+                    {row.month.slice(2)}
+                  </td>
+                  {OCCURRENCE_METRIC_KEYS.map((key) => cell(row, key))}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+                <td className="px-1.5 py-1.5 text-gray-700">合計</td>
+                {OCCURRENCE_METRIC_KEYS.map((key) => cell(null, key))}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      <p className="text-[10px] text-gray-400 mt-1">
+        月の表示は YY-MM。（　）内は重複を除いた実人数。
+        一次面接通過・二次面接通過は通過日のプロパティが無いため、実施日で数えられる二次面接実施・最終面接実施に置き換えています。
+        推薦社数は推薦日時が入っている応募だけを数えるので、上の表と件数がずれます。
+      </p>
     </div>
   );
 }
@@ -1023,6 +1122,21 @@ export default function Dashboard({ section }: { section?: SectionId }) {
     return data.monthlyMetrics.map((m) => m.month);
   }, [data]);
 
+  // 実施日起点。流入経路別は未対応なので、経路を絞っているときは出さない
+  // （経路で割った実施日集計はサーバ側に無い）。担当者と月の絞り込みには従う。
+  const displayOccurrence = useMemo((): MonthlyOccurrenceMetrics[] => {
+    if (!data) return [];
+    if (selectedSources.length > 0) return [];
+    let rows =
+      selectedStaff === "全体"
+        ? data.monthlyOccurrence ?? []
+        : (data.staffOccurrence ?? {})[selectedStaff] ?? [];
+    if (selectedMonths.length > 0) {
+      rows = rows.filter((m) => selectedMonths.includes(m.month));
+    }
+    return rows;
+  }, [data, selectedStaff, selectedSources, selectedMonths]);
+
   const displayTotals = useMemo((): Record<CAMetricKey, number> => {
     const t: Record<string, number> = {};
     for (const key of CA_METRIC_KEYS) t[key] = 0;
@@ -1798,6 +1912,13 @@ export default function Dashboard({ section }: { section?: SectionId }) {
               </ResponsiveContainer>
             </div>
           )}
+
+          {/* 実施日起点の歩留まり。上の表がエントリー月に全部まとめるのに対し、
+              こちらは各イベントが起きた月に載せる */}
+          <OccurrenceTrendTable
+            rows={displayOccurrence}
+            disabledReason={selectedSources.length > 0 ? "流入経路で絞っているあいだは表示できません（実施日起点の経路別集計は未対応）" : null}
+          />
 
           {data?.monthlySpeakingRatio && data.monthlySpeakingRatio.months.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-4">

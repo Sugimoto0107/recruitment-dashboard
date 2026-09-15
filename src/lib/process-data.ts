@@ -30,6 +30,58 @@ export interface MonthlyCAMetrics {
   unique?: Record<string, number>;
 }
 
+// --- 月別 実施日起点の指標 ---
+// MonthlyCAMetrics が「求職者のエントリー月」に全部まとめるのに対し、
+// こちらは各イベントが実際に起きた日の月に計上する。
+// 7月エントリーの人が9月に内定承諾したら、内定承諾は9月に載る。
+//
+// 一次面接通過数・二次面接通過数は通過した日を持つプロパティが無いため、
+// 実施日で数えられる「二次面接実施数・最終面接実施数」に置き換えている。
+// 次の面接が実施されたことが、前の面接を通過した事実そのものなので、
+// 歩留まりの読み方は変わらない。
+export interface MonthlyOccurrenceMetrics {
+  month: string;
+  エントリー数: number;
+  有効エントリー数: number;
+  面談数: number;
+  推薦社数: number;
+  面接設定数: number;
+  一次面接実施数: number;
+  二次面接実施数: number;
+  最終面接実施数: number;
+  内定数: number;
+  内定承諾数: number;
+  入社数: number;
+  unique?: Record<string, number>;
+}
+
+// 実施日起点の表で表示する順番
+export const OCCURRENCE_METRIC_KEYS = [
+  "エントリー数",
+  "有効エントリー数",
+  "面談数",
+  "推薦社数",
+  "面接設定数",
+  "一次面接実施数",
+  "二次面接実施数",
+  "最終面接実施数",
+  "内定数",
+  "内定承諾数",
+  "入社数",
+] as const;
+
+// 応募件数と実人数がずれる（1人が複数社を受ける）キー
+export const OCCURRENCE_UNIQUE_KEYS = [
+  "推薦社数",
+  "面接設定数",
+  "一次面接実施数",
+  "二次面接実施数",
+  "最終面接実施数",
+  "内定数",
+  "内定承諾数",
+  "入社数",
+] as const;
+
 // 推薦以降のフェーズキー（ユニーク人数を併記する対象）
 export const RECOMMEND_ONWARD_KEYS = [
   "推薦社数",
@@ -184,6 +236,9 @@ export interface DashboardData {
   activeJobs: number;
   // CA: 月別・担当者別・流入経路別・(担当者×流入経路)
   monthlyMetrics: MonthlyCAMetrics[];
+  // 実施日起点（各イベントが起きた月に計上）
+  monthlyOccurrence: MonthlyOccurrenceMetrics[];
+  staffOccurrence: Record<string, MonthlyOccurrenceMetrics[]>;
   staffList: string[];
   staffMetrics: Record<string, MonthlyCAMetrics[]>;
   sourceList: string[];
@@ -334,6 +389,103 @@ export function computeMonthlyMetrics(
     const sets = uniqueSets.get(m.month)!;
     const unique: Record<string, number> = {};
     for (const k of RECOMMEND_ONWARD_KEYS) unique[k] = sets[k].size;
+    m.unique = unique;
+  }
+  return result.sort((a, b) => a.month.localeCompare(b.month));
+}
+
+// =============================================================
+// 月別 実施日起点の指標
+// =============================================================
+/**
+ * イベントが起きた日の月に計上する。エントリー月にまとめる computeMonthlyMetrics と
+ * 対にして見るためのもの。「9月に何件動いたか」が知りたいときはこちら。
+ *
+ * 日付が空の行はその指標では数えない。エントリー月起点と違って
+ * 「いつ起きたか」が分からないものを月に置く根拠が無いため。
+ * 面談数だけは求職者管理DBの面談実施日を使う（他は応募管理DB）。
+ */
+export function computeMonthlyOccurrence(
+  seekers: RawJobSeeker[],
+  apps: RawApplication[] = []
+): MonthlyOccurrenceMetrics[] {
+  const monthMap = new Map<string, MonthlyOccurrenceMetrics>();
+  const uniqueSets = new Map<string, Record<string, Set<string>>>();
+  const seekerIdSet = new Set(seekers.map((s) => s.id));
+
+  const empty = (month: string): MonthlyOccurrenceMetrics => ({
+    month,
+    エントリー数: 0,
+    有効エントリー数: 0,
+    面談数: 0,
+    推薦社数: 0,
+    面接設定数: 0,
+    一次面接実施数: 0,
+    二次面接実施数: 0,
+    最終面接実施数: 0,
+    内定数: 0,
+    内定承諾数: 0,
+    入社数: 0,
+  });
+
+  const ensure = (monthKey: string): MonthlyOccurrenceMetrics => {
+    if (!monthMap.has(monthKey)) {
+      monthMap.set(monthKey, empty(monthKey));
+      const sets: Record<string, Set<string>> = {};
+      for (const k of OCCURRENCE_UNIQUE_KEYS) sets[k] = new Set<string>();
+      uniqueSets.set(monthKey, sets);
+    }
+    return monthMap.get(monthKey)!;
+  };
+
+  // 求職者管理DB側: エントリーと面談
+  for (const s of seekers) {
+    if (s.entryDate) {
+      const m = ensure(toMonthKey(s.entryDate));
+      m.エントリー数 += 1;
+      if (!s.isInvalid) m.有効エントリー数 += 1;
+    }
+    // 面談済みでも実施日が空の行がある。その月に置く根拠が無いので数えない。
+    if (s.interviewDone && s.interviewDate) {
+      ensure(toMonthKey(s.interviewDate)).面談数 += 1;
+    }
+  }
+
+  // 応募管理DB側: 推薦以降。1応募が複数の月に跨って計上される（推薦は7月、内定は9月など）。
+  const bump = (
+    key: (typeof OCCURRENCE_UNIQUE_KEYS)[number],
+    dateStr: string | null,
+    seekerId: string | undefined
+  ) => {
+    if (!dateStr) return;
+    const monthKey = toMonthKey(dateStr);
+    const m = ensure(monthKey) as unknown as Record<string, number>;
+    m[key] += 1;
+    if (seekerId) uniqueSets.get(monthKey)![key].add(seekerId);
+  };
+
+  for (const a of apps) {
+    // 担当者別・流入経路別に呼ばれるので、渡された求職者の応募だけを見る
+    const seekerId = a.seekerIds.find((id) => seekerIdSet.has(id));
+    if (!seekerId) continue;
+
+    // 推薦日時が空の行はこの表では数えない（エントリー月起点の表はフェーズがあれば
+    // 数えるので、推薦社数だけは両表で件数がずれる）
+    bump("推薦社数", a.recommendDate, seekerId);
+    bump("面接設定数", a.firstInterviewSetDate, seekerId);
+    bump("一次面接実施数", a.firstInterviewDate, seekerId);
+    bump("二次面接実施数", a.secondInterviewDate, seekerId);
+    bump("最終面接実施数", a.finalInterviewDate, seekerId);
+    bump("内定数", a.offerDate, seekerId);
+    bump("内定承諾数", a.acceptanceDate, seekerId);
+    bump("入社数", a.expectedJoinDate, seekerId);
+  }
+
+  const result = Array.from(monthMap.values());
+  for (const m of result) {
+    const sets = uniqueSets.get(m.month)!;
+    const unique: Record<string, number> = {};
+    for (const k of OCCURRENCE_UNIQUE_KEYS) unique[k] = sets[k].size;
     m.unique = unique;
   }
   return result.sort((a, b) => a.month.localeCompare(b.month));
@@ -1445,7 +1597,14 @@ export function processAllData(
   });
 
   const monthlyMetrics = computeMonthlyMetrics(enrichedSeekers, applications);
+  // 実施日起点。エントリー月起点と並べて見るので、担当者別も同じ形で作る
+  const monthlyOccurrence = computeMonthlyOccurrence(enrichedSeekers, applications);
+  const staffOccurrence: Record<string, MonthlyOccurrenceMetrics[]> = {};
   const { staffList, staffMetrics } = computeStaffMetrics(enrichedSeekers, applications);
+  for (const staff of staffList) {
+    const group = enrichedSeekers.filter((s) => (s.staff || "未設定") === staff);
+    staffOccurrence[staff] = computeMonthlyOccurrence(group, applications);
+  }
   const { sourceList, sourceMetrics } = computeSourceMetrics(enrichedSeekers, applications);
   const staffSourceMetrics = computeStaffSourceMetrics(enrichedSeekers, applications);
   const grandTotals = computeGrandTotals(monthlyMetrics);
@@ -1502,6 +1661,8 @@ export function processAllData(
     contractedCompanies: companySummary.total,
     activeJobs: jobSummary.byStatus["公開中"] ?? 0,
     monthlyMetrics,
+    monthlyOccurrence,
+    staffOccurrence,
     staffList,
     staffMetrics,
     sourceList,
