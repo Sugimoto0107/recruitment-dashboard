@@ -286,10 +286,35 @@ export interface DashboardData {
 // =============================================================
 // ヘルパー
 // =============================================================
+/**
+ * dateA から dateB までの日数。dateB が前なら負の値を返す。
+ * 以前は Math.abs を使っていたため、日付が逆転したデータ（面談実施日の上書き、
+ * 求職者リレーションの付け違いなど）が正の日数として平均に混ざっていた。
+ */
 function daysBetween(dateA: string, dateB: string): number {
   const a = new Date(dateA);
   const b = new Date(dateB);
-  return Math.abs(b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24);
+  return (b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24);
+}
+
+/**
+ * 順序が正しい（0日以上の）ときだけ日数を返す。逆転していれば null。
+ * 逆転はデータ不整合なので平均には入れず、サーバーログに出して気づけるようにする。
+ */
+function orderedDays(
+  label: string,
+  who: string,
+  dateA: string,
+  dateB: string
+): number | null {
+  const days = daysBetween(dateA, dateB);
+  if (days < 0) {
+    console.warn(
+      `[process-data] 日付が逆転しています（集計から除外）: ${label} ${who} ${dateA} → ${dateB} (${Math.round(days)}日)`
+    );
+    return null;
+  }
+  return days;
 }
 
 function toMonthKey(dateStr: string): string {
@@ -586,19 +611,24 @@ export function computeAverageDays(seekers: RawJobSeeker[], applications: RawApp
   for (const s of seekers) {
     const d = appDates.get(s.id);
     if (s.entryDate && s.interviewDate && s.interviewDone) {
-      interviewDays.push(daysBetween(s.entryDate, s.interviewDate));
+      const v = orderedDays("エントリー→面談", s.name, s.entryDate, s.interviewDate);
+      if (v !== null) interviewDays.push(v);
     }
     if (s.entryDate && d?.earliestAcceptanceDate) {
-      acceptanceDays.push(daysBetween(s.entryDate, d.earliestAcceptanceDate));
+      const v = orderedDays("エントリー→内定承諾", s.name, s.entryDate, d.earliestAcceptanceDate);
+      if (v !== null) acceptanceDays.push(v);
     }
     if (s.interviewDate && s.interviewDone && d?.firstRecommendDate) {
-      interviewToRecommendDays.push(daysBetween(s.interviewDate, d.firstRecommendDate));
+      const v = orderedDays("面談→初回推薦", s.name, s.interviewDate, d.firstRecommendDate);
+      if (v !== null) interviewToRecommendDays.push(v);
     }
     if (s.entryDate && d?.earliestOfferDate) {
-      entryToOfferDays.push(daysBetween(s.entryDate, d.earliestOfferDate));
+      const v = orderedDays("エントリー→内定", s.name, s.entryDate, d.earliestOfferDate);
+      if (v !== null) entryToOfferDays.push(v);
     }
     if (s.entryDate && s.hireDate) {
-      entryToHireDays.push(daysBetween(s.entryDate, s.hireDate));
+      const v = orderedDays("エントリー→入社", s.name, s.entryDate, s.hireDate);
+      if (v !== null) entryToHireDays.push(v);
     }
   }
 
@@ -641,24 +671,24 @@ export function computeMonthlyAverageDaysRaw(
     const d = appDates.get(s.id);
 
     if (s.interviewDate && s.interviewDone) {
-      raw.interviewSum += daysBetween(s.entryDate, s.interviewDate);
-      raw.interviewCount++;
+      const v = orderedDays("エントリー→面談", s.name, s.entryDate, s.interviewDate);
+      if (v !== null) { raw.interviewSum += v; raw.interviewCount++; }
     }
     if (d?.earliestAcceptanceDate) {
-      raw.acceptanceSum += daysBetween(s.entryDate, d.earliestAcceptanceDate);
-      raw.acceptanceCount++;
+      const v = orderedDays("エントリー→内定承諾", s.name, s.entryDate, d.earliestAcceptanceDate);
+      if (v !== null) { raw.acceptanceSum += v; raw.acceptanceCount++; }
     }
     if (s.interviewDate && s.interviewDone && d?.firstRecommendDate) {
-      raw.interviewToRecommendSum += daysBetween(s.interviewDate, d.firstRecommendDate);
-      raw.interviewToRecommendCount++;
+      const v = orderedDays("面談→初回推薦", s.name, s.interviewDate, d.firstRecommendDate);
+      if (v !== null) { raw.interviewToRecommendSum += v; raw.interviewToRecommendCount++; }
     }
     if (d?.earliestOfferDate) {
-      raw.entryToOfferSum += daysBetween(s.entryDate, d.earliestOfferDate);
-      raw.entryToOfferCount++;
+      const v = orderedDays("エントリー→内定", s.name, s.entryDate, d.earliestOfferDate);
+      if (v !== null) { raw.entryToOfferSum += v; raw.entryToOfferCount++; }
     }
     if (s.hireDate) {
-      raw.entryToHireSum += daysBetween(s.entryDate, s.hireDate);
-      raw.entryToHireCount++;
+      const v = orderedDays("エントリー→入社", s.name, s.entryDate, s.hireDate);
+      if (v !== null) { raw.entryToHireSum += v; raw.entryToHireCount++; }
     }
   }
 
