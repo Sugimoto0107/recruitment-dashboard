@@ -195,6 +195,22 @@ function KPICard({ title, value, sub }: { title: string; value: string | number;
   );
 }
 
+// 実施日起点テーブルの列名。「推薦社」は分かりにくいので「推薦数」と出す
+// （中身は推薦日時が入っている応募の件数。2026-09-18 ユーザー指示）。
+const OCCURRENCE_LABELS: Record<string, string> = {
+  一次面接実施数: "一次面接",
+  二次面接実施数: "二次面接",
+  最終面接実施数: "最終面接",
+  内定数: "内定",
+  内定承諾数: "承諾",
+  入社数: "入社",
+  推薦社数: "推薦数",
+  面接設定数: "面接設定",
+  面談数: "面談",
+  エントリー数: "エントリー",
+  有効エントリー数: "有効",
+};
+
 // --- 実施日起点の月別テーブル ---
 // エントリー月起点の表（上）と対になるもの。推薦・面接・内定・入社を
 // 「その日が来た月」に載せる。7月エントリーの人が9月に承諾したら9月に立つ。
@@ -225,9 +241,17 @@ function OccurrenceTrendTable({
     const uniq = row ? row.unique?.[key] : uniqueTotals[key];
     const showUnique = uniqueKeys.has(key) && uniq !== undefined && uniq !== value;
     return (
-      <td key={key} className="px-1.5 py-1.5 text-right tabular-nums">
-        <span className={value === 0 ? "text-gray-300" : "text-gray-800"}>{fmt(value)}</span>
-        {showUnique && <span className="text-gray-400 text-[10px] ml-1">({fmt(uniq!)})</span>}
+      <td key={key} className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap">
+        <span className="inline-flex items-baseline justify-end gap-1">
+          <span
+            className={`inline-block w-8 text-right ${value === 0 ? "text-gray-300" : "text-gray-800"}`}
+          >
+            {fmt(value)}
+          </span>
+          <span className="inline-block w-8 text-right text-gray-400 text-[10px]">
+            {showUnique ? `(${fmt(uniq!)})` : ""}
+          </span>
+        </span>
       </td>
     );
   };
@@ -257,8 +281,8 @@ function OccurrenceTrendTable({
               <tr className="bg-gray-50 text-gray-600">
                 <th className="px-1.5 py-1.5 font-medium text-left">月</th>
                 {OCCURRENCE_METRIC_KEYS.map((key) => (
-                  <th key={key} className="px-1.5 py-1.5 font-medium text-right whitespace-nowrap">
-                    {key.replace(/数$/, "")}
+                  <th key={key} className="px-1.5 py-1.5 font-medium text-right whitespace-nowrap tabular-nums">
+                    {OCCURRENCE_LABELS[key] ?? key.replace(/数$/, "")}
                   </th>
                 ))}
               </tr>
@@ -286,7 +310,7 @@ function OccurrenceTrendTable({
       <p className="text-[10px] text-gray-400 mt-1">
         月の表示は YY-MM。（　）内は重複を除いた実人数。
         一次面接通過・二次面接通過は通過日のプロパティが無いため、実施日で数えられる二次面接実施・最終面接実施に置き換えています。
-        推薦社数は推薦日時が入っている応募だけを数えるので、上の表と件数がずれます。
+        「推薦数」は推薦日時が入っている応募の件数です。推薦日時が空の応募は数えないため、上の表と件数がずれます。
       </p>
     </div>
   );
