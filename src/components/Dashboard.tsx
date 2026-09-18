@@ -889,8 +889,12 @@ function SeekerTableRows({ rows, label }: { rows: JobSeekerSummary[]; label: str
             })()}
           </td>
           <td className={tdR}>{r.recommendations}</td>
-          <td className={tdR}>{r.interviewSettings}</td>
-          <td className={tdR}>{r.interviewsConducted}</td>
+          <td className={tdR + (r.interviewSettings < 4 ? " text-red-600 font-semibold" : "")}>
+            {r.interviewSettings}
+          </td>
+          <td className={tdR + (r.interviewsConducted < 4 ? " text-red-600 font-semibold" : "")}>
+            {r.interviewsConducted}
+          </td>
           <td className={tdR}>{r.firstInterviewPass}</td>
           <td className={tdR}>{r.secondInterviewExecuted}</td>
           <td className={tdR}>{r.secondInterviewPass}</td>

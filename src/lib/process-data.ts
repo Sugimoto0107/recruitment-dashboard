@@ -56,20 +56,20 @@ export interface MonthlyOccurrenceMetrics {
 }
 
 // 実施日起点の表で表示する順番。
-// 成果に近い列（一次面接実施・内定・承諾）を左に寄せ、集客の列は右へ置く
-// （2026-09-18 ユーザー指示）。
+// 上のエントリー月起点の表と見比べられるよう、列順はそちらに合わせる
+// （2026-09-18 ユーザー指示で並べ替えを取り消し）。
 export const OCCURRENCE_METRIC_KEYS = [
+  "エントリー数",
+  "有効エントリー数",
+  "面談数",
+  "推薦社数",
+  "面接設定数",
   "一次面接実施数",
   "二次面接実施数",
   "最終面接実施数",
   "内定数",
   "内定承諾数",
   "入社数",
-  "推薦社数",
-  "面接設定数",
-  "面談数",
-  "エントリー数",
-  "有効エントリー数",
 ] as const;
 
 // 応募件数と実人数がずれる（1人が複数社を受ける）キー
@@ -288,6 +288,14 @@ export interface DashboardData {
 // =============================================================
 // ヘルパー
 // =============================================================
+/** その日付が今日以前か（未来の予定を「実施済み」と数えないための判定） */
+function isPastOrToday(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const t = Date.parse(value.length <= 10 ? `${value}T23:59:59+09:00` : value);
+  if (Number.isNaN(t)) return false;
+  return t <= Date.now();
+}
+
 /**
  * dateA から dateB までの日数。dateB が前なら負の値を返す。
  * 以前は Math.abs を使っていたため、日付が逆転したデータ（面談実施日の上書き、
@@ -1600,8 +1608,13 @@ export function processAllData(
       const ph = app.phase;
       // 応募管理DBへの登録 = 推薦（全件カウント）
       m.recommendations++;
-      if (app.firstInterviewSetDate || (ph && _PASSED_FIRST.has(ph)))  m.interviewSettings++;
-      if (app.firstInterviewDate    || (ph && _PASSED_FIRST.has(ph)))  m.interviewsConducted++;
+      // 面接設定＝日程が確定しているか、一次より先へ進んだもの。
+      // 面接実施＝実施日が今日以前（＝実際に終わった面接）か、一次より先へ進んだもの。
+      // フェーズ「一次面接」だけで実施済みと数えると、日程調整中や来週の予定まで
+      // 実施に入ってしまうため、実施日で判定する（2026-09-18 ユーザー指示）。
+      const passedFirst = !!ph && _PASSED_FIRST.has(ph) && ph !== "一次面接";
+      if (app.firstInterviewSetDate || app.firstInterviewDate || passedFirst) m.interviewSettings++;
+      if (isPastOrToday(app.firstInterviewDate) || passedFirst) m.interviewsConducted++;
       if (app.secondInterviewDate   || (ph && _PASSED_SECOND.has(ph))) { m.firstInterviewPass++; m.secondInterviewExecuted++; }
       if (app.finalInterviewDate    || (ph && _PASSED_FINAL.has(ph)))  { m.secondInterviewPass++; m.finalInterviewExecuted++; }
       if (app.offerDate             || (ph && _PASSED_OFFER.has(ph)))  m.offers++;
