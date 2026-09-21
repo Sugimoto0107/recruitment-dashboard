@@ -68,6 +68,8 @@ export const APPLICATION_PHASES = [
   "不採用（最終面接NG）",
   "こちら辞退",
   "先方辞退",
+  "内定辞退",
+  "内定承諾後の辞退",
 ] as const;
 
 export type CompanyStatus = (typeof COMPANY_STATUSES)[number];

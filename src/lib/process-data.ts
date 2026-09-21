@@ -1001,9 +1001,9 @@ export function computeOfferComparison(
 ): OfferComparison {
   const PASSED_FIRST = new Set([
     "一次面接","不採用（一次面接NG）","二次面接","不採用（二次面接NG）",
-    "最終面接","不採用（最終面接NG）","内定","内定承諾","入社",
+    "最終面接","不採用（最終面接NG）","内定","内定辞退","内定承諾","内定承諾後の辞退","入社",
   ]);
-  const PASSED_OFFER = new Set(["内定","内定承諾","入社"]);
+  const PASSED_OFFER = new Set(["内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
 
   // 候補者(seeker)単位に: 推薦数(rec) / 一次面接実施数(first) / 内定到達(offer)
   const bySeeker = new Map<string, { rec: number; first: number; offer: boolean }>();
@@ -1051,11 +1051,11 @@ export function computeApplicationFunnel(
   let declines = 0;
 
   // フェーズからそのステップ以上に達したかを判定（日付未入力でも動作）
-  const PASSED_FIRST  = new Set(["一次面接","不採用（一次面接NG）","二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
-  const PASSED_SECOND = new Set(["二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
-  const PASSED_FINAL  = new Set(["最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
-  const PASSED_OFFER  = new Set(["内定","内定承諾","入社"]);
-  const PASSED_ACCEPT = new Set(["内定承諾","入社"]);
+  const PASSED_FIRST  = new Set(["一次面接","不採用（一次面接NG）","二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
+  const PASSED_SECOND = new Set(["二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
+  const PASSED_FINAL  = new Set(["最終面接","不採用（最終面接NG）","内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
+  const PASSED_OFFER  = new Set(["内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
+  const PASSED_ACCEPT = new Set(["内定承諾","内定承諾後の辞退","入社"]);
 
   // フェーズごとの「重複を除いた求職者ID集合」（ユニーク実人数用）
   const uRec = new Set<string>();
@@ -1589,11 +1589,11 @@ export function processAllData(
   const appMetricsBySeeker = new Map<string, AppDerivedMetrics>();
 
   // 応募ファネルと同じフェーズ判定セット（日付未入力でもフェーズから補完）
-  const _PASSED_FIRST  = new Set(["一次面接","不採用（一次面接NG）","二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
-  const _PASSED_SECOND = new Set(["二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
-  const _PASSED_FINAL  = new Set(["最終面接","不採用（最終面接NG）","内定","内定承諾","入社"]);
-  const _PASSED_OFFER  = new Set(["内定","内定承諾","入社"]);
-  const _PASSED_ACCEPT = new Set(["内定承諾","入社"]);
+  const _PASSED_FIRST  = new Set(["一次面接","不採用（一次面接NG）","二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
+  const _PASSED_SECOND = new Set(["二次面接","不採用（二次面接NG）","最終面接","不採用（最終面接NG）","内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
+  const _PASSED_FINAL  = new Set(["最終面接","不採用（最終面接NG）","内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
+  const _PASSED_OFFER  = new Set(["内定","内定辞退","内定承諾","内定承諾後の辞退","入社"]);
+  const _PASSED_ACCEPT = new Set(["内定承諾","内定承諾後の辞退","入社"]);
 
   for (const app of applications) {
     for (const seekerId of app.seekerIds) {
